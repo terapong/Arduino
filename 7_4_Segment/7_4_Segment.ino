@@ -190,3 +190,4 @@ void loop() {
 
 //ros2 topic echo /segment7_4_state
 //ros2 topic pub /segment7_4_command std_msgs/msg/Int32 "data: 1"
+//Terapong potisuwan test GIT
