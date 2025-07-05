@@ -116,3 +116,4 @@ void loop() {
 //ros2 topic pub --once /segment7_command std_msgs/msg/Int32 "data: 1"
 //ros2 topic pub --once /segment7_command std_msgs/msg/Int32 "data: 2"
 //ros2 run otto_robot segment7_control_gui
+//Terapogn potisuwan
