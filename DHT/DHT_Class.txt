@@ -1,0 +1,171 @@
+# Micro-ROS ESP32 DHT Sensor Class
+
+Here's a complete implementation of a Micro-ROS compatible class for reading DHT sensors (DHT11, DHT22) on ESP32:
+
+## DHT Sensor Class (Header File)
+
+// dht_micro_ros.h
+#ifndef DHT_MICRO_ROS_H
+#define DHT_MICRO_ROS_H
+
+#include <Arduino.h>
+#include <DHT.h>
+#include <micro_ros_arduino.h>
+#include <sensor_msgs/msg/temperature.h>
+#include <sensor_msgs/msg/relative_humidity.h>
+
+class DHTMicroROS {
+public:
+    DHTMicroROS(uint8_t pin, uint8_t type, rcl_node_t* node, const char* temp_topic, const char* humidity_topic);
+    ~DHTMicroROS();
+    
+    void setup();
+    void update();
+    void publish();
+
+private:
+    DHT dht;
+    rcl_node_t* node_;
+    rcl_publisher_t temperature_publisher_;
+    rcl_publisher_t humidity_publisher_;
+    sensor_msgs__msg__Temperature temp_msg_;
+    sensor_msgs__msg__RelativeHumidity humidity_msg_;
+    const char* temp_topic_;
+    const char* humidity_topic_;
+    bool initialized_;
+};
+
+#endif
+
+## DHT Sensor Class Implementation
+
+// dht_micro_ros.cpp
+#include "dht_micro_ros.h"
+
+DHTMicroROS::DHTMicroROS(uint8_t pin, uint8_t type, rcl_node_t* node, const char* temp_topic, const char* humidity_topic)
+    : dht(pin, type), node_(node), temp_topic_(temp_topic), humidity_topic_(humidity_topic), initialized_(false) {
+}
+
+DHTMicroROS::~DHTMicroROS() {
+    if (initialized_) {
+        rcl_publisher_fini(&temperature_publisher_, node_);
+        rcl_publisher_fini(&humidity_publisher_, node_);
+    }
+}
+
+void DHTMicroROS::setup() {
+    dht.begin();
+    
+    // Create publishers
+    RCCHECK(rclc_publisher_init_default(
+        &temperature_publisher_,
+        node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Temperature),
+        temp_topic_));
+    
+    RCCHECK(rclc_publisher_init_default(
+        &humidity_publisher_,
+        node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, RelativeHumidity),
+        humidity_topic_));
+    
+    initialized_ = true;
+}
+
+void DHTMicroROS::update() {
+    // Read temperature as Celsius
+    float temp = dht.readTemperature();
+    if (!isnan(temp)) {
+        temp_msg_.temperature = temp;
+    } else {
+        Serial.println("Failed to read temperature from DHT sensor!");
+    }
+    
+    // Read humidity
+    float humidity = dht.readHumidity();
+    if (!isnan(humidity)) {
+        humidity_msg_.relative_humidity = humidity;
+    } else {
+        Serial.println("Failed to read humidity from DHT sensor!");
+    }
+}
+
+void DHTMicroROS::publish() {
+    if (initialized_) {
+        temp_msg_.header.stamp = micro_ros_arduino_get_clock().now;
+        humidity_msg_.header.stamp = temp_msg_.header.stamp;
+        
+        RCSOFTCHECK(rcl_publish(&temperature_publisher_, &temp_msg_, NULL));
+        RCSOFTCHECK(rcl_publish(&humidity_publisher_, &humidity_msg_, NULL));
+    }
+}
+
+## Usage Example in Main Sketch
+
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include "dht_micro_ros.h"
+
+rcl_node_t node;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+
+// Create DHT sensor instance
+#define DHT_PIN 4       // GPIO pin where DHT is connected
+#define DHT_TYPE DHT22  // DHT22 or DHT11
+
+DHTMicroROS dht_sensor(DHT_PIN, DHT_TYPE, &node, "/esp32/temperature", "/esp32/humidity");
+
+void setup() {
+    Serial.begin(115200);
+    set_microros_transports();
+    
+    delay(2000);  // Give some time for the serial monitor
+    
+    allocator = rcl_get_default_allocator();
+    
+    // Initialize micro-ROS
+    RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+    RCCHECK(rclc_node_init_default(&node, "esp32_dht_node", "", &support));
+    
+    // Setup DHT sensor
+    dht_sensor.setup();
+    
+    // Create executor
+    RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+}
+
+void loop() {
+    // Update sensor readings
+    dht_sensor.update();
+    
+    // Publish data
+    dht_sensor.publish();
+    
+    // Spin micro-ROS
+    RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+    
+    delay(2000);  // Update every 2 seconds
+}
+
+## Required Libraries
+
+1. *DHT Sensor Library*: Install from Arduino Library Manager (search for "DHT sensor library")
+2. *Micro-ROS Arduino*: Follow installation instructions from [micro-ROS Arduino documentation](https://micro.ros.org/docs/tutorials/core/arduino/)
+
+## Configuration Notes
+
+1. Adjust DHT_PIN to match your ESP32 GPIO pin
+2. Set DHT_TYPE to either DHT11 or DHT22 depending on your sensor
+3. Modify topic names (/esp32/temperature and /esp32/humidity) as needed
+The example uses a 2-second update interval - adjust as needed
+
+
+## Error Handling
+
+The code includes basic error checking with RCCHECK and RCSOFTCHECK macros from micro-ROS. For production use, you may want to add more robust error handling and recovery.
+
+This implementation provides a clean interface to read DHT sensors and publish the data via micro-ROS to a ROS 2 network.

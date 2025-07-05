@@ -1,0 +1,192 @@
+micro-ros esp32 rtc ds3231 & python
+
+# Micro-ROS, ESP32, DS3231 RTC, and Python Integration
+
+This guide covers how to integrate a DS3231 real-time clock (RTC) module with an ESP32 running Micro-ROS, and communicate with it from a Python application.
+
+## Hardware Setup
+
+1. *Components Needed*:
+   - ESP32 board (e.g., ESP32-WROOM-32)
+   - DS3231 RTC module
+   - Breadboard and jumper wires
+
+2. *Connections*:
+   
+   DS3231  ->  ESP32
+   VCC     ->  3.3V
+   GND     ->  GND
+   SDA     ->  GPIO21 (default I2C SDA)
+   SCL     ->  GPIO22 (default I2C SCL)
+   
+
+## Micro-ROS Setup on ESP32
+
+1. *Install Micro-ROS for ESP32*:
+   Follow the official Micro-ROS ESP32 installation guide from the [Micro-ROS documentation](https://micro.ros.org/docs/tutorials/core/first_application_rtos/freertos/).
+
+2. *DS3231 Library*:
+   Use a DS3231 library compatible with Micro-ROS. The RTClib by Adafruit is a good choice.
+
+3. *Micro-ROS Publisher Code* (main.cpp example):
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+#include <Wire.h>
+#include "RTClib.h"
+
+RTC_DS3231 rtc;
+rcl_publisher_t publisher;
+std_msgs__msg__String msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+void setup() {
+  Wire.begin();
+  rtc.begin();
+  
+  // Initialize Micro-ROS
+  set_microros_transports();
+  allocator = rcl_get_default_allocator();
+  rclc_support_init(&support, 0, NULL, &allocator);
+  rclc_node_init_default(&node, "esp32_rtc_node", "", &support);
+  
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "rtc_time");
+}
+
+void loop() {
+  static uint32_t last_publish = 0;
+  if (millis() - last_publish > 1000) {
+    DateTime now = rtc.now();
+    
+    // Format time as string
+    char time_str[50];
+    sprintf(time_str, "%04d-%02d-%02d %02d:%02d:%02d", 
+            now.year(), now.month(), now.day(), 
+            now.hour(), now.minute(), now.second());
+    
+    msg.data.data = time_str;
+    msg.data.size = strlen(time_str);
+    
+    rcl_publish(&publisher, &msg, NULL);
+    last_publish = millis();
+  }
+  
+  // Spin Micro-ROS
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+}
+
+## Python Side Setup
+
+1. *Install required packages*:
+pip install rclpy pyserial
+
+2. *Python Subscriber Code*:
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import String
+
+class RTCSubscriber(Node):
+    def __init__(self):
+        super().__init__('rtc_subscriber')
+        self.subscription = self.create_subscription(
+            String,
+            'rtc_time',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+
+    def listener_callback(self, msg):
+        self.get_logger().info(f'Received RTC time: {msg.data}')
+
+def main(args=None):
+    rclpy.init(args=args)
+    rtc_subscriber = RTCSubscriber()
+    rclpy.spin(rtc_subscriber)
+    rtc_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+## Running the System
+
+1. *Flash the ESP32* with your Micro-ROS code
+2. *Connect the ESP32* to your computer
+3. *Start the Micro-ROS agent*:
+ros2 run micro_ros_agent micro_ros_agent serial --dev [YOUR_DEVICE_PORT] -v
+4. *Run the Python subscriber*:
+python3 rtc_subscriber.py
+
+## Additional Features
+
+### Setting RTC Time from Python
+
+You can add a service to set the RTC time from Python:
+
+1. *Micro-ROS Service Server* (add to your ESP32 code):
+#include <example_interfaces/srv/set_string.h>
+
+rcl_service_t service;
+
+void set_rtc_time(const void *req, void *res) {
+  example_interfaces__srv__SetString_Request *req_in = 
+    (example_interfaces__srv__SetString_Request *)req;
+  example_interfaces__srv__SetString_Response *res_out = 
+    (example_interfaces__srv__SetString_Response *)res;
+  
+  // Parse the string and set RTC time here
+  // Format: "YYYY-MM-DD HH:MM:SS"
+  
+  res_out->success = true;
+  res_out->message.data = "Time set successfully";
+  res_out->message.size = strlen(res_out->message.data);
+}
+
+// In setup():
+rclc_service_init_default(&service, &node, 
+  ROSIDL_GET_SRV_TYPE_SUPPORT(example_interfaces, srv, SetString),
+  "set_rtc_time");
+
+2. *Python Client*:
+from example_interfaces.srv import SetString
+import rclpy
+from rclpy.node import Node
+
+class RTCClient(Node):
+    def set_time(self, time_str):
+        client = self.create_client(SetString, 'set_rtc_time')
+        while not client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        
+        req = SetString.Request()
+        req.data = time_str
+        future = client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        
+        if future.result() is not None:
+            return future.result().success
+        else:
+            return False
+
+def main(args=None):
+    rclpy.init(args=args)
+    client = RTCClient()
+    success = client.set_time("2023-11-15 14:30:00")
+    client.get_logger().info(f'Time set: {success}')
+    client.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+This setup provides a complete system for reading and setting RTC time on an ESP32 with DS3231 using Micro-ROS and Python.

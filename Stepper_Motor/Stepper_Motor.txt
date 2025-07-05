@@ -1,0 +1,95 @@
+#include <Stepper.h>
+
+int motorPin[] = { 15, 2, 4, 16 };
+
+void setup() {
+  pinMode(motorPin[0], OUTPUT);
+  pinMode(motorPin[1], OUTPUT);
+  pinMode(motorPin[2], OUTPUT);
+  pinMode(motorPin[3], OUTPUT);
+}
+
+void loop() {
+  digitalWrite(motorPin[0], HIGH);
+  digitalWrite(motorPin[1], LOW);
+  digitalWrite(motorPin[2], LOW);
+  digitalWrite(motorPin[3], LOW);
+  delay(10);
+  digitalWrite(motorPin[0], HIGH);
+  digitalWrite(motorPin[1], HIGH);
+  digitalWrite(motorPin[2], LOW);
+  digitalWrite(motorPin[3], LOW);
+  delay(10);
+  digitalWrite(motorPin[0], LOW);
+  digitalWrite(motorPin[1], HIGH);
+  digitalWrite(motorPin[2], LOW);
+  digitalWrite(motorPin[3], LOW);
+  delay(10);
+  digitalWrite(motorPin[0], LOW);
+  digitalWrite(motorPin[1], HIGH);
+  digitalWrite(motorPin[2], HIGH);
+  digitalWrite(motorPin[3], LOW);
+  delay(10);
+  digitalWrite(motorPin[0], LOW);
+  digitalWrite(motorPin[1], LOW);
+  digitalWrite(motorPin[2], HIGH);
+  digitalWrite(motorPin[3], LOW);
+  delay(10);
+  digitalWrite(motorPin[0], LOW);
+  digitalWrite(motorPin[1], LOW);
+  digitalWrite(motorPin[2], HIGH);
+  digitalWrite(motorPin[3], HIGH);
+  delay(10);
+  digitalWrite(motorPin[0], LOW);
+  digitalWrite(motorPin[1], LOW);
+  digitalWrite(motorPin[2], LOW);
+  digitalWrite(motorPin[3], HIGH);
+  delay(10);
+  digitalWrite(motorPin[0], HIGH);
+  digitalWrite(motorPin[1], LOW);
+  digitalWrite(motorPin[2], LOW);
+  digitalWrite(motorPin[3], HIGH);
+  delay(10);
+
+  // digitalWrite(motorPin[0], HIGH);
+  // digitalWrite(motorPin[1], HIGH);
+  // digitalWrite(motorPin[2], LOW);
+  // digitalWrite(motorPin[3], LOW);
+  // delay(10);
+  // digitalWrite(motorPin[0], LOW);
+  // digitalWrite(motorPin[1], HIGH);
+  // digitalWrite(motorPin[2], HIGH);
+  // digitalWrite(motorPin[3], LOW);
+  // delay(10);
+  // digitalWrite(motorPin[0], LOW);
+  // digitalWrite(motorPin[1], LOW);
+  // digitalWrite(motorPin[2], HIGH);
+  // digitalWrite(motorPin[3], HIGH);
+  // delay(10);
+  // digitalWrite(motorPin[0], HIGH);
+  // digitalWrite(motorPin[1], LOW);
+  // digitalWrite(motorPin[2], LOW);
+  // digitalWrite(motorPin[3], HIGH);
+  // delay(10);
+
+  // digitalWrite(motorPin[0], HIGH);
+  // digitalWrite(motorPin[1], LOW);
+  // digitalWrite(motorPin[2], LOW);
+  // digitalWrite(motorPin[3], LOW);
+  // delay(10);
+  // digitalWrite(motorPin[0], LOW);
+  // digitalWrite(motorPin[1], HIGH);
+  // digitalWrite(motorPin[2], LOW);
+  // digitalWrite(motorPin[3], LOW);
+  // delay(10);
+  // digitalWrite(motorPin[0], LOW);
+  // digitalWrite(motorPin[1], LOW);
+  // digitalWrite(motorPin[2], HIGH);
+  // digitalWrite(motorPin[3], LOW);
+  // delay(10);
+  // digitalWrite(motorPin[0], LOW);
+  // digitalWrite(motorPin[1], LOW);
+  // digitalWrite(motorPin[2], LOW);
+  // digitalWrite(motorPin[3], HIGH);
+  // delay(10);
+}

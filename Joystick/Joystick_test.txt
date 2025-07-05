@@ -1,0 +1,157 @@
+# Micro-ROS on ESP32 with Joystick and EZ-Button using Python
+
+This guide will help you set up a Micro-ROS node on an ESP32 that reads input from a joystick and a button, then communicates with a Python host computer via ROS 2.
+
+## Hardware Components
+- ESP32 development board
+- Analog joystick module (typically with X, Y axes and a push button)
+- EZ-Button or similar momentary push button
+- Breadboard and jumper wires
+
+## Setup Steps
+
+### 1. Install Required Software
+- Install ROS 2 (Humble or newer recommended)
+- Install Micro-ROS build system
+- Install Python ROS 2 packages: `pip install rclpy`
+
+### 2. ESP32 Micro-ROS Setup
+
+#### Wiring:
+- Joystick X-axis → ESP32 ADC pin (e.g., GPIO34)
+- Joystick Y-axis → ESP32 ADC pin (e.g., GPIO35)
+- Joystick button → ESP32 input pin (e.g., GPIO25)
+- EZ-Button → ESP32 input pin (e.g., GPIO26)
+
+#### Micro-ROS Code (main.cpp):
+```cpp
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
+#include <sensor_msgs/msg/joy.h>
+
+// Pin definitions
+#define JOY_X_PIN 34
+#define JOY_Y_PIN 35
+#define JOY_BTN_PIN 25
+#define EZ_BTN_PIN 26
+
+rcl_publisher_t publisher;
+sensor_msgs__msg__Joy joy_msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+void setup() {
+  // Initialize Micro-ROS
+  set_microros_transports();
+  
+  // Initialize pins
+  pinMode(JOY_BTN_PIN, INPUT_PULLUP);
+  pinMode(EZ_BTN_PIN, INPUT_PULLUP);
+  
+  // Initialize ROS structures
+  allocator = rcl_get_default_allocator();
+  rclc_support_init(&support, 0, NULL, &allocator);
+  rclc_node_init_default(&node, "esp32_joystick_node", "", &support);
+  
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Joy),
+    "joystick_input");
+    
+  // Initialize joy message
+  joy_msg.axes.data = (float*)malloc(2 * sizeof(float));
+  joy_msg.axes.size = 2;
+  joy_msg.buttons.data = (int32_t*)malloc(2 * sizeof(int32_t));
+  joy_msg.buttons.size = 2;
+}
+
+void loop() {
+  // Read joystick values (0-4095 for ESP32 ADC)
+  int x_raw = analogRead(JOY_X_PIN);
+  int y_raw = analogRead(JOY_Y_PIN);
+  
+  // Convert to -1.0 to 1.0 range
+  joy_msg.axes.data[0] = (x_raw - 2048) / 2048.0;
+  joy_msg.axes.data[1] = (y_raw - 2048) / 2048.0;
+  
+  // Read buttons (inverted because we're using pullups)
+  joy_msg.buttons.data[0] = !digitalRead(JOY_BTN_PIN);
+  joy_msg.buttons.data[1] = !digitalRead(EZ_BTN_PIN);
+  
+  // Publish message
+  rcl_publish(&publisher, &joy_msg, NULL);
+  
+  delay(50);  // 20Hz update rate
+}
+```
+
+### 3. Python ROS 2 Listener
+
+Create a Python script to listen to the joystick data:
+
+```python
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import Joy
+
+class JoystickListener(Node):
+    def __init__(self):
+        super().__init__('joystick_listener')
+        self.subscription = self.create_subscription(
+            Joy,
+            'joystick_input',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+        
+    def listener_callback(self, msg):
+        # Print joystick and button data
+        self.get_logger().info(
+            f'Joystick: X={msg.axes[0]:.2f}, Y={msg.axes[1]:.2f} | '
+            f'Buttons: Joy={msg.buttons[0]}, EZ={msg.buttons[1]}'
+        )
+
+def main(args=None):
+    rclpy.init(args=args)
+    joystick_listener = JoystickListener()
+    rclpy.spin(joystick_listener)
+    joystick_listener.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+### 4. Running the System
+
+1. Flash the ESP32 with the Micro-ROS code
+2. Start the Micro-ROS agent on your host computer:
+   ```bash
+   ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
+   ```
+   (Replace `/dev/ttyUSB0` with your ESP32's serial port)
+
+3. Run the Python listener:
+   ```bash
+   python3 joystick_listener.py
+   ```
+
+## Advanced Enhancements
+
+1. **Add debouncing for the button** in the ESP32 code to prevent multiple triggers
+2. **Implement custom messages** for more complex data structures
+3. **Add WiFi transport** instead of serial for wireless communication
+4. **Create a control system** that takes actions based on joystick/button input
+
+Remember to adjust pin numbers and message types according to your specific hardware setup.
+
+
+

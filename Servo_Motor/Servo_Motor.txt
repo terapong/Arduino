@@ -1,0 +1,18 @@
+#include <ESP32Servo.h>
+
+Servo myservo;
+int pulseWidth = 2400;
+int servoPin = 15;
+void setup() {
+  // pinMode(servoPin, OUTPUT);
+  myservo.attach(servoPin, 544, 2400);
+}
+
+void loop() {
+  myservo.write(0);
+  // digitalWrite(servoPin, HIGH);
+  // delayMicroseconds(pulseWidth);
+  // digitalWrite(servoPin, LOW);
+  // delayMicroseconds(20000 - pulseWidth);
+}
+

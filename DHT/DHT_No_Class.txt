@@ -1,0 +1,440 @@
+# Using Micro-ROS with ESP32 and DHT Sensor
+
+To integrate a DHT temperature/humidity sensor with Micro-ROS on an ESP32, you'll need to follow these steps:
+
+## Prerequisites
+
+- ESP32 board (with WiFi)
+- DHT11 or DHT22 sensor
+- Micro-ROS setup for ESP32
+- ROS 2 environment on your host machine
+
+## Hardware Connections
+
+Connect the DHT sensor to your ESP32:
+- VCC to 3.3V
+- GND to GND
+- Data pin to a GPIO (e.g., GPIO4)
+
+## Software Setup
+
+1. *Install Micro-ROS for ESP32*:
+   Follow the official Micro-ROS ESP32 installation guide from the Micro-ROS documentation.
+
+2. *Create a Micro-ROS Publisher for DHT Data*:
+
+#include <micro_ros_arduino.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <sensor_msgs/msg/temperature.h>
+#include <sensor_msgs/msg/relative_humidity.h>
+#include <DHT.h>
+
+#define DHT_PIN 4
+#define DHT_TYPE DHT22   // or DHT11 if you're using that
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+rcl_publisher_t temperature_publisher;
+rcl_publisher_t humidity_publisher;
+sensor_msgs__msg__Temperature temperature_msg;
+sensor_msgs__msg__RelativeHumidity humidity_msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+void error_loop() {
+  while(1) {
+    delay(100);
+  }
+}
+
+void setup() {
+  // Initialize micro-ROS
+  set_microros_transports();
+  delay(2000);
+  
+  allocator = rcl_get_default_allocator();
+  
+  // Initialize support structure
+  rclc_support_init(&support, 0, NULL, &allocator);
+  
+  // Create node
+  rclc_node_init_default(&node, "esp32_dht_node", "", &support);
+  
+  // Create publishers
+  rclc_publisher_init_default(
+    &temperature_publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Temperature),
+    "esp32/temperature");
+    
+  rclc_publisher_init_default(
+    &humidity_publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, RelativeHumidity),
+    "esp32/humidity");
+    
+  // Initialize DHT sensor
+  dht.begin();
+  
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 1, &allocator);
+}
+
+void loop() {
+  // Read sensor data
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+  
+  if (isnan(temp) || isnan(hum)) {
+    delay(2000);
+    return;
+  }
+  
+  // Prepare messages
+  temperature_msg.temperature = temp;
+  temperature_msg.variance = 0.0;
+  
+  humidity_msg.relative_humidity = hum;
+  humidity_msg.variance = 0.0;
+  
+  // Publish messages
+  rcl_publish(&temperature_publisher, &temperature_msg, NULL);
+  rcl_publish(&humidity_publisher, &humidity_msg, NULL);
+  
+  // Spin once
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  
+  delay(2000); // Adjust delay as needed
+}
+
+## Micro-ROS Agent Setup
+
+On your host machine:
+1. Install the Micro-ROS agent
+2. Run the agent:
+ros2 run micro_ros_agent micro_ros_agent serial --dev [PORT] -v6
+(Replace [PORT] with your ESP32's serial port)
+
+## Viewing the Data
+
+Once everything is running:
+ros2 topic echo /esp32/temperature
+ros2 topic echo /esp32/humidity
+
+## Troubleshooting
+
+1. If you get connection issues, check your serial port and baud rate
+2. Ensure your ESP32 has proper WiFi/Micro-ROS configuration
+3. Verify your DHT sensor is working with a simple test sketch first
+4. Check for proper power supply to the DHT sensor
+
+## Alternative Approach
+
+For better reliability, consider:
+- Adding error handling for the DHT readings
+- Implementing a custom message type that combines temperature and humidity
+- Using a software timer for more precise publishing intervals
+
+Would you like me to elaborate on any specific part of this setup?
+
+
+//////////////////////////////////
+# Micro-ROS with ESP32 and DHT Sensor (Python)
+
+This guide will help you set up a Micro-ROS node on an ESP32 that reads data from a DHT sensor (DHT11/DHT22) and publishes it to a ROS 2 network, with a Python node to receive and process the data.
+
+## Hardware Requirements
+- ESP32 board
+- DHT11 or DHT22 sensor
+- Breadboard and jumper wires
+- USB cable for programming
+
+## Software Requirements
+- ROS 2 (Humble or newer recommended)
+- Micro-ROS setup for ESP32
+- Python 3.x
+- rclpy Python package
+
+## Setup Steps
+
+### 1. Micro-ROS ESP32 Firmware with DHT Support
+
+1. *Install Micro-ROS for ESP32*:
+   Follow the official Micro-ROS ESP32 installation guide: https://micro.ros.org/docs/tutorials/core/first_application_rtos/freertos/
+
+2. *Add DHT Library*:
+   Add the DHT sensor library to your project. Edit extras/library_generation/extra_packages and add:
+   
+   https://github.com/adafruit/DHT-sensor-library.git
+   
+
+3. *Create Micro-ROS Publisher Node*:
+   Here's a sample code for your ESP32 (main.c):
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/float32.h>
+#include <DHT.h>
+
+#define DHT_PIN 4     // GPIO pin connected to DHT
+#define DHT_TYPE DHT22 // DHT22 or DHT11
+
+rcl_publisher_t publisher_temp;
+rcl_publisher_t publisher_humid;
+std_msgs__msg__Float32 msg_temp;
+std_msgs__msg__Float32 msg_humid;
+DHT dht(DHT_PIN, DHT_TYPE);
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+    RCLC_UNUSED(last_call_time);
+    if (timer != NULL) {
+        // Read sensor data
+        float humidity = dht.readHumidity();
+        float temperature = dht.readTemperature();
+        
+        if (!isnan(humidity) && !isnan(temperature)) {
+            msg_temp.data = temperature;
+            msg_humid.data = humidity;
+            
+            rcl_publish(&publisher_temp, &msg_temp, NULL);
+            rcl_publish(&publisher_humid, &msg_humid, NULL);
+        }
+    }
+}
+
+void appMain(void *argument) {
+    rcl_allocator_t allocator = rcl_get_default_allocator();
+    rclc_support_t support;
+    rcl_node_t node;
+    rcl_timer_t timer;
+    rclc_executor_t executor;
+
+    // Initialize DHT sensor
+    dht.begin();
+
+    // Initialize micro-ROS
+    rclc_support_init(&support, 0, NULL, &allocator);
+    rclc_node_init_default(&node, "esp32_dht_node", "", &support);
+    
+    // Create publishers
+    rclc_publisher_init_default(
+        &publisher_temp,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+        "esp32/temperature");
+    
+    rclc_publisher_init_default(
+        &publisher_humid,
+        &node,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),
+        "esp32/humidity");
+
+    // Create timer
+    rclc_timer_init_default(
+        &timer,
+        &support,
+        RCL_MS_TO_NS(2000),
+        timer_callback);
+
+    // Create executor
+    rclc_executor_init(&executor, &support.context, 1, &allocator);
+    rclc_executor_add_timer(&executor, &timer);
+
+    while(1) {
+        rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+        usleep(10000);
+    }
+
+    // Cleanup (unreachable in this example)
+    rcl_publisher_fini(&publisher_temp, &node);
+    rcl_publisher_fini(&publisher_humid, &node);
+    rcl_node_fini(&node);
+}
+
+### 2. Python ROS 2 Subscriber Node
+
+Create a Python node to receive the DHT data:
+
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Float32
+
+class DHTSubscriber(Node):
+    def __init__(self):
+        super().__init__('dht_subscriber')
+        
+        # Create subscribers
+        self.temp_sub = self.create_subscription(
+            Float32,
+            'esp32/temperature',
+            self.temp_callback,
+            10)
+        
+        self.humid_sub = self.create_subscription(
+            Float32,
+            'esp32/humidity',
+            self.humid_callback,
+            10)
+        
+        self.get_logger().info("DHT Subscriber Node Started")
+
+    def temp_callback(self, msg):
+        self.get_logger().info(f'Temperature: {msg.data:.2f}°C')
+
+    def humid_callback(self, msg):
+        self.get_logger().info(f'Humidity: {msg.data:.2f}%')
+
+def main(args=None):
+    rclpy.init(args=args)
+    dht_subscriber = DHTSubscriber()
+    rclpy.spin(dht_subscriber)
+    dht_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+### 3. Running the System
+
+1. *Flash the ESP32* with your Micro-ROS firmware
+2. *Connect the ESP32* to your ROS 2 network (via serial or WiFi)
+3. *Start the Micro-ROS agent*:
+   
+   ros2 run micro_ros_agent micro_ros_agent serial --dev [YOUR_DEVICE] baudrate=115200
+   
+   (Replace [YOUR_DEVICE] with your serial port, e.g., /dev/ttyUSB0)
+
+4. *Run the Python subscriber*:
+   
+   python3 dht_subscriber.py
+   
+
+## Troubleshooting
+
+1. If you get compilation errors for the DHT library, you may need to manually add it to your project.
+2. Ensure the correct GPIO pin is specified in the ESP32 code.
+3. Check the baud rate matches between your ESP32 code and the Micro-ROS agent.
+4. Verify the topics match between the publisher and subscriber.
+
+This setup will give you a basic system where the ESP32 reads temperature and humidity data and publishes it to ROS 2 topics, which are then received by your Python node.
+
+
+//////////////////////
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from std_srvs.srv import Trigger
+from std_msgs.msg import Int32
+from std_msgs.msg import String
+
+from std_msgs.msg import Float32
+import tkinter as tk
+
+class DHTControlGUI(Node):
+    def __init__(self):
+        super().__init__('dht_control_gui')
+        
+        #self.subscription = self.create_subscription(Int32, '/segment7_4_state', self.listener_callback, 10)      
+        
+        self.temp_sub = self.create_subscription(Float32, 'esp32/temperature', self.temp_callback, 10) #esp32/temperature
+        
+        self.humid_sub = self.create_subscription(Float32, 'esp32/humidity', self.humid_callback, 10) #esp32/humidity
+        
+        self.get_logger().info("DHT Subscriber Node Started")
+        
+        # Setup the Tkinter GUI
+        self.window = tk.Tk()
+        self.window.title("DHT Control")
+        self.window.geometry("400x200")
+        
+        self.label = tk.Label(self.window, text="temperature : ", font="Calibri 24 bold")
+        self.label.pack()
+        
+        self.label = tk.Label(self.window, text="humidity : ", font="Calibri 24 bold")
+        self.label.pack()
+        
+        self.window.protocol("WM_DELETE_WINDOW", self.on_close)
+    
+    def temp_callback(self, msg):
+        self.get_logger().info(f'Temperature: {msg.data:.2f}°C')
+
+    def humid_callback(self, msg):
+        self.get_logger().info(f'Humidity: {msg.data:.2f}%')
+    
+    def on_close(self):
+        self.window.quit()
+        
+def main(args=None):
+    
+    rclpy.init(args=args)
+    dht_subscriber = DHTControlGUI()
+    
+    rclpy.spin(dht_subscriber)
+    
+    # Tkinter main loop inside ROS spin 
+    # while rclpy.ok():
+    #     rclpy.spin_once(dht_subscriber, timeout_sec=0.1)
+    #     dht_subscriber.window.update_idletasks()
+    #     dht_subscriber.window.update()
+
+    dht_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == "__main__":
+    main()
+    
+    
+////////////////Okkkkkkk ต่อไปใส่ import tkinter as tk
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+# from sensor_msgs.msg import Temperature, Humidity
+
+from sensor_msgs.msg import Temperature, RelativeHumidity
+
+class DHTSubscriber(Node):
+    def __init__(self):
+        super().__init__('dht_subscriber')
+        self.temp_subscription = self.create_subscription(
+            Temperature,
+            'esp32/temperature',
+            self.temp_callback,
+            10)
+        self.hum_subscription = self.create_subscription(
+            RelativeHumidity,
+            'esp32/humidity',
+            self.hum_callback,
+            10)
+               
+        self.temp_subscription  # prevent unused variable warning
+        # self.hum_subscription   # prevent unused variable warning
+    
+    def temp_callback(self, msg):
+        self.get_logger().info(f'Temperature: {msg.temperature}°C')
+    
+    def hum_callback(self, msg):
+        self.get_logger().info(f'Humidity: {msg.relative_humidity}%')
+
+def main(args=None):
+    rclpy.init(args=args)
+    dht_subscriber = DHTSubscriber()
+    rclpy.spin(dht_subscriber)
+    dht_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+

@@ -1,0 +1,178 @@
+int X = 14;
+int Y = 12;
+int SW = 13;
+
+//////////////
+/*
+ * This ESP32 code is created by esp32io.com
+ *
+ * This ESP32 code is released in the public domain
+ *
+ * For more detail (instruction and wiring diagram), visit https://esp32io.com/tutorials/esp32-joystick
+ */
+
+#define VRX_PIN  15 // ESP32 pin GPIO39 (ADC3) connected to VRX pin
+#define VRY_PIN  2 // ESP32 pin GPIO36 (ADC0) connected to VRY pin
+
+int valueX = 0; // to store the X-axis value
+int valueY = 0; // to store the Y-axis value
+
+void setup() {
+  Serial.begin(9600);
+
+  // Set the ADC attenuation to 11 dB (up to ~3.3V input)
+  analogSetAttenuation(ADC_11db);
+}
+
+void loop() {
+  // read X and Y analog values
+  valueX = analogRead(VRX_PIN);
+  valueY = analogRead(VRY_PIN);
+
+  // print data to Serial Monitor on Arduino IDE
+  Serial.print("x = ");
+  Serial.print(valueX);
+  Serial.print(", y = ");
+  Serial.println(valueY);
+  delay(200);
+}
+
+///////////////////
+/*
+ * This ESP32 code is created by esp32io.com
+ *
+ * This ESP32 code is released in the public domain
+ *
+ * For more detail (instruction and wiring diagram), visit https://esp32io.com/tutorials/esp32-joystick
+ */
+
+#include <ezButton.h>
+
+#define VRX_PIN  15 // ESP32 pin GPIO39 (ADC3) connected to VRX pin
+#define VRY_PIN  2 // ESP32 pin GPIO36 (ADC0) connected to VRY pin
+#define SW_PIN   4 // ESP32 pin GPIO17 connected to SW  pin
+
+ezButton button(SW_PIN);
+
+int valueX = 0; // to store the X-axis value
+int valueY = 0; // to store the Y-axis value
+int bValue = 0; // To store value of the button
+
+void setup() {
+  Serial.begin(9600);
+
+  // Set the ADC attenuation to 11 dB (up to ~3.3V input)
+  analogSetAttenuation(ADC_11db);
+  button.setDebounceTime(50); // set debounce time to 50 milliseconds
+}
+
+void loop() {
+  button.loop(); // MUST call the loop() function first
+
+  // read X and Y analog values
+  valueX = analogRead(VRX_PIN);
+  valueY = analogRead(VRY_PIN);
+
+  // Read the button value
+  bValue = button.getState();
+
+  if (button.isPressed()) {
+    Serial.println("The button is pressed");
+    // TODO do something here
+  }
+
+  if (button.isReleased()) {
+    Serial.println("The button is released");
+    // TODO do something here
+  }
+
+  // print data to Serial Monitor on Arduino IDE
+  Serial.print("x = ");
+  Serial.print(valueX);
+  Serial.print(", y = ");
+  Serial.print(valueY);
+  Serial.print(" : button = ");
+  Serial.println(bValue);
+}
+
+
+////////////////////////////////
+/*
+ * This ESP32 code is created by esp32io.com
+ *
+ * This ESP32 code is released in the public domain
+ *
+ * For more detail (instruction and wiring diagram), visit https://esp32io.com/tutorials/esp32-joystick
+ */
+
+#define VRX_PIN  14 // ESP32 pin GPIO39 (ADC3) connected to VRX pin
+#define VRY_PIN  2 // ESP32 pin GPIO36 (ADC0) connected to VRY pin
+
+#define LEFT_THRESHOLD  1000
+#define RIGHT_THRESHOLD 3000
+#define UP_THRESHOLD    1000
+#define DOWN_THRESHOLD  3000
+
+#define COMMAND_NO     0x00
+#define COMMAND_LEFT   0x01
+#define COMMAND_RIGHT  0x02
+#define COMMAND_UP     0x04
+#define COMMAND_DOWN   0x08
+
+int valueX = 0 ; // to store the X-axis value
+int valueY = 0 ; // to store the Y-axis value
+int command = COMMAND_NO;
+
+void setup() {
+  Serial.begin(9600);
+
+  // Set the ADC attenuation to 11 dB (up to ~3.3V input)
+  analogSetAttenuation(ADC_11db);
+}
+
+void loop() {
+  // read X and Y analog values
+  valueX = analogRead(VRX_PIN);
+  valueY = analogRead(VRY_PIN);
+
+  // converts the analog value to commands
+  // reset commands
+  command = COMMAND_NO;
+
+  // check left/right commands
+  if (valueX < LEFT_THRESHOLD)
+    command = command | COMMAND_LEFT;
+  else if (valueX > RIGHT_THRESHOLD)
+    command = command | COMMAND_RIGHT;
+
+  // check up/down commands
+  if (valueY < UP_THRESHOLD)
+    command = command | COMMAND_UP;
+  else if (valueY > DOWN_THRESHOLD)
+    command = command | COMMAND_DOWN;
+
+  // NOTE: AT A TIME, THERE MAY BE NO COMMAND, ONE COMMAND OR TWO COMMANDS
+
+  // print command to serial and process command
+  if (command & COMMAND_LEFT) {
+    Serial.println("COMMAND LEFT");
+    // TODO: add your task here
+  }
+
+  if (command & COMMAND_RIGHT) {
+    Serial.println("COMMAND RIGHT");
+    // TODO: add your task here
+  }
+
+  if (command & COMMAND_UP) {
+    Serial.println("COMMAND UP");
+    // TODO: add your task here
+  }
+
+  if (command & COMMAND_DOWN) {
+    Serial.println("COMMAND DOWN");
+    // TODO: add your task here
+  }
+}
+
+

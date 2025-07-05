@@ -1,0 +1,111 @@
+int a = 2;
+int b = 5;
+int c = 3;
+int d = 19;
+int e = 18;
+int f = 4;
+int g = 1;
+int dp = 21;
+int d1 = 15;
+int d2 = 16;
+int d3 = 17;
+int d4 = 22;
+
+unsigned long lastTime = 0;
+unsigned int digitPos = 1;
+
+unsigned int value = 9999;
+
+void segment7(int _a, int _b, int _c, int _d, int _e, int _f, int _g, int _dp) {
+  digitalWrite(a, _a);
+  digitalWrite(b, _b);
+  digitalWrite(c, _c);
+  digitalWrite(d, _d);
+  digitalWrite(e, _e);
+  digitalWrite(f, _f);
+  digitalWrite(g, _g);
+  digitalWrite(dp, _dp);
+}
+
+void showDigit(int value) {
+  if (value == 0) {
+    segment7(HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW, LOW);
+  } else if (value == 1) {
+    segment7(LOW, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW);
+  } else if (value == 2) {
+    segment7(HIGH, HIGH, LOW, HIGH, HIGH, LOW, HIGH, LOW);
+  } else if (value == 3) {
+    segment7(HIGH, HIGH, HIGH, HIGH, LOW, LOW, HIGH, LOW);
+  } else if (value == 4) {
+    segment7(LOW, HIGH, HIGH, LOW, LOW, HIGH, HIGH, LOW);
+  } else if (value == 5) {
+    segment7(HIGH, LOW, HIGH, HIGH, LOW, HIGH, HIGH, LOW);
+  } else if (value == 6) {
+    segment7(HIGH, LOW, HIGH, HIGH, HIGH, HIGH, HIGH, LOW);
+  } else if (value == 7) {
+    segment7(HIGH, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW);
+  } else if (value == 8) {
+    segment7(HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW);
+  } else if (value == 9) {
+    segment7(HIGH, HIGH, HIGH, HIGH, LOW, HIGH, HIGH, LOW);
+  } else if (value == 10) {
+    segment7(LOW, LOW, LOW, LOW, LOW, LOW, LOW, HIGH);
+  }
+}
+
+void setup() {
+  //Serial.begin(115200);
+  pinMode(a, OUTPUT);
+  pinMode(b, OUTPUT);
+  pinMode(c, OUTPUT);
+  pinMode(d, OUTPUT);
+  pinMode(e, OUTPUT);
+  pinMode(f, OUTPUT);
+  pinMode(g, OUTPUT);
+  pinMode(dp, OUTPUT);
+  pinMode(d1, OUTPUT);
+  pinMode(d2, OUTPUT);
+  pinMode(d3, OUTPUT);
+  pinMode(d4, OUTPUT);
+
+  digitalWrite(d1, LOW);
+  digitalWrite(d2, LOW);
+  digitalWrite(d3, LOW);
+  digitalWrite(d4, LOW);
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastTime >= 1) {
+    lastTime = currentTime;
+    digitPos++;
+    if (digitPos > 4) {
+      digitPos = 1;
+    }
+
+    unsigned int digitToShow = (value / (int)(pow(10, 4 - digitPos) + 0.5)) % 10;
+    showDigit(digitToShow);
+    if (digitPos == 1) {
+      digitalWrite(d1, LOW);
+      digitalWrite(d2, HIGH);
+      digitalWrite(d3, HIGH);
+      digitalWrite(d4, HIGH);
+    } else if (digitPos == 2) {
+      digitalWrite(d1, HIGH);
+      digitalWrite(d2, LOW);
+      digitalWrite(d3, HIGH);
+      digitalWrite(d4, HIGH);
+    } else if (digitPos == 3) {
+      digitalWrite(d1, HIGH);
+      digitalWrite(d2, HIGH);
+      digitalWrite(d3, LOW);
+      digitalWrite(d4, HIGH);
+    } else {
+      digitalWrite(d1, HIGH);
+      digitalWrite(d2, HIGH);
+      digitalWrite(d3, HIGH);
+      digitalWrite(d4, LOW);
+    }
+  }
+}
+

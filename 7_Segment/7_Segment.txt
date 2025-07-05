@@ -1,0 +1,103 @@
+int a = 4;
+int b = 16;
+int c = 18;
+int d = 5;
+int e = 17;
+int f = 2;
+int g = 15;
+int dp = 19;
+
+int value = 0;
+
+void segment7(int _a, int _b, int _c, int _d, int _e, int _f, int _g, int _dp) {
+  digitalWrite(a, _a);
+  digitalWrite(b, _b);
+  digitalWrite(c, _c);
+  digitalWrite(d, _d);
+  digitalWrite(e, _e);
+  digitalWrite(f, _f);
+  digitalWrite(g, _g);
+  digitalWrite(dp, _dp);
+}
+
+void selectValue(int value) {
+  if (value == 0) {
+    segment7(HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW, LOW);
+  } else if (value == 1) {
+    segment7(LOW, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW);
+  } else if (value == 2) {
+    segment7(HIGH, HIGH, LOW, HIGH, HIGH, LOW, HIGH, LOW);
+  } else if (value == 3) {
+    segment7(HIGH, HIGH, HIGH, HIGH, LOW, LOW, HIGH, LOW);
+  } else if (value == 4) {
+    segment7(LOW, HIGH, HIGH, LOW, LOW, HIGH, HIGH, LOW);
+  } else if (value == 5) {
+    segment7(HIGH, LOW, HIGH, HIGH, LOW, HIGH, HIGH, LOW);
+  } else if (value == 6) {
+    segment7(HIGH, LOW, HIGH, HIGH, HIGH, HIGH, HIGH, LOW);
+  } else if (value == 7) {
+    segment7(HIGH, HIGH, HIGH, LOW, LOW, LOW, LOW, LOW);
+  } else if (value == 8) {
+    segment7(HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, HIGH, LOW);
+  } else if (value == 9) {
+    segment7(HIGH, HIGH, HIGH, HIGH, LOW, HIGH, HIGH, LOW);
+  } else if (value == 10) {
+    segment7(LOW, LOW, LOW, LOW, LOW, LOW, LOW, HIGH);
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(a, OUTPUT);
+  pinMode(b, OUTPUT);
+  pinMode(c, OUTPUT);
+  pinMode(d, OUTPUT);
+  pinMode(e, OUTPUT);
+  pinMode(f, OUTPUT);
+  pinMode(g, OUTPUT);
+  pinMode(dp, OUTPUT);
+}
+
+void loop() {
+  selectValue(0);
+  Serial.println("----- TOTO 0 -------");
+  delay(1000);
+  selectValue(1);
+  Serial.println("----- TOTO 1 -------");
+  delay(1000);
+  selectValue(2);
+  Serial.println("----- TOTO 2 -------");
+  delay(1000);
+  selectValue(3);
+  Serial.println("----- TOTO 3 -------");
+  delay(1000);
+  selectValue(4);
+  Serial.println("----- TOTO 4 -------");
+  delay(1000);
+  selectValue(5);
+  Serial.println("----- TOTO 5 -------");
+  delay(1000);
+  selectValue(6);
+  Serial.println("----- TOTO 6 -------");
+  delay(1000);
+  selectValue(7);
+  Serial.println("----- TOTO 7 -------");
+  delay(1000);
+  selectValue(8);
+  Serial.println("----- TOTO 8 -------");
+  delay(1000);
+  selectValue(9);
+  Serial.println("----- TOTO 9 -------");
+  delay(1000);
+  selectValue(10);
+  Serial.println("----- TOTO 10 -------");
+  delay(1000);
+  // Serial.println("-----TOTO-------");
+  // value++;
+  // if (value > 10) {
+  //   value = 0;
+  // }
+  delay(1000);
+}
+

@@ -1,0 +1,237 @@
+# Micro-ROS ESP32 Stepper Motor Control with Arduino and Python
+
+This project demonstrates how to control a stepper motor using Micro-ROS on an ESP32, with a 4-step sequence, and interface it with a Python application.
+
+## Hardware Requirements
+
+- ESP32 development board
+- Stepper motor (4-wire bipolar or unipolar)
+- Motor driver (like ULN2003 for unipolar or L298N for bipolar motors)
+- Jumper wires
+- Power supply for the motor
+
+## Software Requirements
+
+- Arduino IDE with ESP32 support
+- Micro-ROS library for Arduino
+- ROS 2 (Foxy or Humble) installed on your host machine
+- Python 3 with rclpy library
+
+## Circuit Setup
+
+1. Connect the stepper motor to the driver board
+2. Connect the driver board to ESP32:
+   - IN1, IN2, IN3, IN4 to four GPIO pins of your choice
+   - Connect power supply to the driver board
+
+## Arduino Code (Micro-ROS)
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
+
+// Stepper motor pins
+#define IN1 12
+#define IN2 14
+#define IN3 27
+#define IN4 26
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+std_msgs__msg__Int32 msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+// Stepper motor sequence (4-step)
+const int stepSequence[4][4] = {
+  {1, 0, 0, 1},
+  {1, 1, 0, 0},
+  {0, 1, 1, 0},
+  {0, 0, 1, 1}
+};
+
+int currentStep = 0;
+int targetSteps = 0;
+int currentPosition = 0;
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+  RCLC_UNUSED(last_call_time);
+  if (timer != NULL) {
+    // Publish current position
+    msg.data = currentPosition;
+    rcl_publish(&publisher, &msg, NULL);
+  }
+}
+
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
+  targetSteps = msg->data;
+}
+
+void setup() {
+  // Configure stepper motor pins as outputs
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  pinMode(IN3, OUTPUT);
+  pinMode(IN4, OUTPUT);
+  
+  // Initialize Micro-ROS
+  set_microros_transports();
+  delay(2000);
+  
+  allocator = rcl_get_default_allocator();
+  
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+  
+  // Create node
+  rclc_node_init_default(&node, "esp32_stepper_node", "", &support);
+  
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "stepper_position");
+  
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "stepper_target");
+  
+  // Create timer
+  rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(100),
+    timer_callback);
+  
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA);
+  rclc_executor_add_timer(&executor, &timer);
+}
+
+void loop() {
+  // Execute Micro-ROS tasks
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  
+  // Move stepper motor if needed
+  if (currentPosition < targetSteps) {
+    moveStepper(1); // Move one step forward
+    currentPosition++;
+  } else if (currentPosition > targetSteps) {
+    moveStepper(-1); // Move one step backward
+    currentPosition--;
+  }
+  
+  delay(1);
+}
+
+void moveStepper(int direction) {
+  currentStep = (currentStep + direction + 4) % 4;
+  
+  digitalWrite(IN1, stepSequence[currentStep][0]);
+  digitalWrite(IN2, stepSequence[currentStep][1]);
+  digitalWrite(IN3, stepSequence[currentStep][2]);
+  digitalWrite(IN4, stepSequence[currentStep][3]);
+  
+  delay(2); // Adjust for motor speed
+}
+```
+
+## Python Control Script
+
+```python
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int32
+
+class StepperController(Node):
+    def __init__(self):
+        super().__init__('stepper_controller')
+        self.subscription = self.create_subscription(
+            Int32,
+            'stepper_position',
+            self.position_callback,
+            10)
+        self.publisher = self.create_publisher(Int32, 'stepper_target', 10)
+        
+        self.current_position = 0
+        self.get_logger().info("Stepper Controller Node Started")
+        
+    def position_callback(self, msg):
+        self.current_position = msg.data
+        self.get_logger().info(f"Current position: {self.current_position}")
+    
+    def move_to_position(self, target):
+        msg = Int32()
+        msg.data = target
+        self.publisher.publish(msg)
+        self.get_logger().info(f"Commanded to move to: {target}")
+
+def main(args=None):
+    rclpy.init(args=args)
+    controller = StepperController()
+    
+    try:
+        while rclpy.ok():
+            # Example movement sequence
+            target = int(input("Enter target position (steps): "))
+            controller.move_to_position(target)
+            
+            # Spin once to process callbacks
+            rclpy.spin_once(controller, timeout_sec=0.1)
+    except KeyboardInterrupt:
+        pass
+    
+    controller.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Setup Instructions
+
+1. Install Micro-ROS in Arduino IDE:
+   - Add https://raw.githubusercontent.com/micro-ROS/micro_ros_arduino/main/extras/library_generation/arduino_micro_ros_install.release to your Arduino board manager
+   - Install "micro_ros_arduino" from Boards Manager
+
+2. Install ROS 2 on your host machine (Foxy or Humble recommended)
+
+3. Flash the Arduino code to your ESP32
+
+4. Set up Micro-ROS agent on your host machine:
+   ```bash
+   ros2 run micro_ros_setup create_agent_ws.sh
+   ros2 run micro_ros_setup build_agent.sh
+   source install/local_setup.bash
+   ros2 run micro_ros_agent micro_ros_agent serial --dev [YOUR_SERIAL_PORT] baudrate=115200
+   ```
+
+5. Run the Python script:
+   ```bash
+   python3 stepper_control.py
+   ```
+
+## Customization Options
+
+- Adjust the step sequence for your specific motor
+- Change the GPIO pins to match your wiring
+- Add acceleration/deceleration for smoother movement
+- Implement microstepping for finer control
+- Add ROS services for more complex commands
+
+This implementation provides basic control of a stepper motor using a 4-step sequence with Micro-ROS on ESP32, allowing for remote control from a Python application via ROS 2 topics.

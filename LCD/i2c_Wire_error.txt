@@ -1,0 +1,27 @@
+I want to make a joint state publisher that publishes sensor data. So far I've been able to publish joint_state with bogus data, however when I try to read data 
+from i2c sensor something breaks. I'm using a TCA9548a i2c multiplexer to connect multiple sensors, but when I try to send the msg to the TCA9548a the ESP32 reboots and 
+keeps rebooting. I can see that the micro ros agent is able to connect, and I can see the joint_state topic with ros2 topic list, but the micro ros agent keeps reconnecting 
+and don't actually publish anything.
+
+Wire.beginTransmission(0x70);
+Wire.write(1 << 0);
+Wire.endTransmission();
+When I comment the communication with the TCA9548a It works fine and goes back to publishing the bogus data. I'm using an ESP32 with micro ros arduino framework, 
+ROS2 Humble and I'm communicating though wifi. Is there any compatibility issue with i2c and micro ros at the moment? Thanks in advance!1
+
+ฉันต้องการสร้างโปรแกรมเผยแพร่สถานะร่วมที่เผยแพร่ข้อมูลเซ็นเซอร์ จนถึงตอนนี้ ฉันสามารถเผยแพร่ joint_state ด้วยข้อมูลปลอมได้ อย่างไรก็ตาม เมื่อฉันพยายามอ่านข้อมูลจากเซ็นเซอร์ i2c บางอย่างก็เกิดขัดข้อง ฉันใช้มัลติเพล็กเซอร์ i2c ของ TCA9548a เพื่อเชื่อมต่อเซ็นเซอร์หลายตัว แต่เมื่อฉันพยายามส่งข้อความถึง TCA9548a ESP32 จะรีบูตและรีบูตซ้ำๆ ฉันเห็นว่าตัวแทน micro ros สามารถเชื่อมต่อได้ และฉันสามารถเห็นหัวข้อ joint_state พร้อมรายการหัวข้อ ros2 แต่ตัวแทน micro ros จะเชื่อมต่อซ้ำๆ
+และไม่ได้เผยแพร่อะไรเลย
+
+Wire.beginTransmission(0x70);
+Wire.write(1 << 0);
+Wire.endTransmission();
+เมื่อฉันแสดงความคิดเห็นเกี่ยวกับการสื่อสารกับ TCA9548a ระบบก็ทำงานได้ดีและกลับไปเผยแพร่ข้อมูลปลอม ฉันใช้ ESP32 กับเฟรมเวิร์ก Arduino ของไมโคร ROS,
+ROS2 Humble และกำลังสื่อสารผ่าน Wi-Fi มีปัญหาด้านความเข้ากันได้กับ i2c และไมโคร ROS ในขณะนี้หรือไม่ ขอบคุณล่วงหน้า!1
+
+I found the problem. The Wire library has problems working with interrupts in the ESP32. Whenever I used Wire.endTransmission(); the ESP32 would reboot. 
+I updated the Arduino Core for ESP32 to the 2.0.14 and the problem is gone. The funny thing is that the ESP32 arduino implementation runs on top of 
+FreeRTOS(that by nature has interrupts), and I had no problem using the Wire library with vanilla arduino code in the ESP32 in the past. The problem emerged when 
+I used an interruption to acquire sensor 
+data thru i2c and publish in a ros topic. 
+
+ฉันพบปัญหาแล้ว ไลบรารี Wire มีปัญหากับการทำงานกับการขัดจังหวะใน ESP32 เมื่อใดก็ตามที่ฉันใช้ Wire.endTransmission(); ESP32 จะรีบูต ฉันอัปเดต Arduino Core สำหรับ ESP32 เป็น 2.0.14 และปัญหาก็หมดไป สิ่งที่น่าขบขันคือการใช้งาน Arduino ของ ESP32 ทำงานบน FreeRTOS (ซึ่งโดยธรรมชาติแล้วมีการขัดจังหวะ) และฉันไม่มีปัญหาในการใช้ไลบรารี Wire กับโค้ด Arduino ดั้งเดิมใน ESP32 ในอดีต ปัญหาเกิดขึ้นเมื่อฉันใช้การขัดจังหวะเพื่อรับข้อมูลเซ็นเซอร์ผ่าน i2c และเผยแพร่ในหัวข้อ ros

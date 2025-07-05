@@ -1,0 +1,192 @@
+# Micro-ROS with ESP32, Arduino, Ultrasonic Sensor, and Python
+
+This guide will help you set up a Micro-ROS node on an ESP32 (using Arduino framework) that reads data from an ultrasonic sensor and communicates with a Python ROS 2 node.
+
+## Hardware Requirements
+- ESP32 development board
+- HC-SR04 ultrasonic sensor
+- Breadboard and jumper wires
+- USB cable for programming and power
+
+## Software Requirements
+- Arduino IDE with ESP32 support
+- ROS 2 (Humble or newer recommended)
+- Micro-ROS Arduino library
+- Python 3
+
+## Setup Steps
+
+### 1. Install Micro-ROS Arduino Library
+1. Open Arduino IDE
+2. Go to Tools > Manage Libraries
+3. Search for "micro_ros_arduino" and install it
+
+### 2. ESP32 Arduino Code
+#include <micro_ros_arduino.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
+
+// Ultrasonic sensor pins
+const int trigPin = 5;
+const int echoPin = 18;
+
+rcl_publisher_t publisher;
+std_msgs__msg__Int32 distance_msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+void error_loop(){
+  while(1){
+    delay(100);
+  }
+}
+
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
+  RCLC_UNUSED(last_call_time);
+  if (timer != NULL) {
+    // Measure distance
+    digitalWrite(trigPin, LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPin, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPin, LOW);
+    
+    long duration = pulseIn(echoPin, HIGH);
+    int distance = duration * 0.034 / 2; // Calculate distance in cm
+    
+    distance_msg.data = distance;
+    RCSOFTCHECK(rcl_publish(&publisher, &distance_msg, NULL));
+  }
+}
+
+void setup() {
+  // Configure ultrasonic sensor pins
+  pinMode(trigPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+  
+  // Set up Micro-ROS
+  set_microros_transports();
+  
+  delay(2000);
+  
+  allocator = rcl_get_default_allocator();
+  
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "esp32_ultrasonic_node", "", &support));
+  
+  // Create publisher
+  RCCHECK(rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "ultrasonic_distance"));
+  
+  // Create timer
+  const unsigned int timer_timeout = 500;
+  RCCHECK(rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(timer_timeout),
+    timer_callback));
+  
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer));
+}
+
+void loop() {
+  delay(100);
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+}
+
+### 3. Python ROS 2 Node to Receive Data
+#!/usr/bin/env python3
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int32
+
+class UltrasonicSubscriber(Node):
+    def __init__(self):
+        super().__init__('ultrasonic_python_subscriber')
+        self.subscription = self.create_subscription(
+            Int32,
+            'ultrasonic_distance',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+    
+    def listener_callback(self, msg):
+        self.get_logger().info(f'Distance: {msg.data} cm')
+
+def main(args=None):
+    rclpy.init(args=args)
+    ultrasonic_subscriber = UltrasonicSubscriber()
+    rclpy.spin(ultrasonic_subscriber)
+    
+    # Destroy the node explicitly
+    ultrasonic_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+
+### 4. Setup and Running Instructions
+
+1. *Flash the ESP32*:
+   - Connect your ESP32 via USB
+   - Select the correct board in Arduino IDE (Tools > Board)
+   - Select the correct port
+   - Upload the code
+
+2. *Set up Micro-ROS Agent*:
+   The agent facilitates communication between the ESP32 and ROS 2 network.
+   
+   # Install micro-ROS agent (if not already installed)
+   sudo apt install ros-$ROS_DISTRO-micro-ros-agent
+   
+   # Run the agent
+   ros2 run micro_ros_agent micro_ros_agent serial --dev [YOUR_ESP32_PORT] baudrate=115200
+   
+   Replace [YOUR_ESP32_PORT] with your ESP32's serial port (e.g., /dev/ttyUSB0)
+
+3. *Run the Python Subscriber*:
+   
+   python3 ultrasonic_subscriber.py
+   
+
+## Troubleshooting
+
+1. *Serial port issues*:
+   - Make sure you have correct permissions for the serial port
+   - Check the port name is correct
+
+2. *Micro-ROS connection problems*:
+   - Ensure the baud rate matches (default is 115200)
+   - Check the ESP32 is properly powered
+
+3. *ROS 2 communication*:
+   - Make sure all nodes are in the same ROS_DOMAIN_ID if you're using domains
+   - Verify the topic names match between publisher and subscriber
+
+## Extending the Project
+
+1. Add multiple sensors
+2. Implement obstacle detection logic
+3. Create a ROS 2 service to calibrate the sensor
+4. Visualize the data in RViz
+5. Add WiFi support for wireless communication
+
+Would you like me to elaborate on any specific part of this setup?

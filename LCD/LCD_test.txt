@@ -1,0 +1,386 @@
+# Micro-ROS with ESP32 and I2C LCD Display
+
+This guide will help you set up a Micro-ROS node on an ESP32 that communicates with an I2C LCD display.
+
+## Prerequisites
+
+- ESP32 board (ESP32-WROOM-32 recommended)
+- I2C LCD display (typically 16x2 or 20x4 with PCF8574 I2C interface)
+- Micro-ROS setup for ESP32
+- Arduino IDE or PlatformIO
+
+## Step 1: Set Up Micro-ROS on ESP32
+
+First, follow the Micro-ROS ESP32 installation guide from the [Micro-ROS documentation](https://micro.ros.org/docs/tutorials/core/first_application_rtos/freertos/).
+
+## Step 2: Install Required Libraries
+
+For the I2C LCD, you'll need the `LiquidCrystal_I2C` library:
+
+### Arduino IDE:
+1. Go to Sketch > Include Library > Manage Libraries
+2. Search for "LiquidCrystal I2C" by Frank de Brabander
+3. Install the library
+
+### PlatformIO:
+Add to your `platformio.ini`:
+```ini
+lib_deps = 
+    marcoschwartz/LiquidCrystal_I2C@^1.1.4
+```
+
+## Step 3: Basic Micro-ROS with LCD Example
+
+Here's a complete example that combines Micro-ROS with LCD output:
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+
+// LCD configuration
+#define I2C_ADDR 0x27  // Common I2C address for PCF8574
+#define LCD_COLS 16    // Number of columns
+#define LCD_ROWS 2      // Number of rows
+
+LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLS, LCD_ROWS);
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+std_msgs__msg__String msg;
+std_msgs__msg__String received_msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+void error_loop() {
+  lcd.clear();
+  lcd.print("Error!");
+  while(1) {
+    delay(100);
+  }
+}
+
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
+  RCLC_UNUSED(last_call_time);
+  if (timer != NULL) {
+    static int count = 0;
+    msg.data.data = (char *) malloc(50);
+    snprintf(msg.data.data, 50, "Hello Micro-ROS %d", count++);
+    msg.data.size = strlen(msg.data.data);
+    
+    lcd.setCursor(0, 0);
+    lcd.print("Sending: ");
+    lcd.setCursor(0, 1);
+    lcd.print(msg.data.data);
+    
+    RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+    free(msg.data.data);
+  }
+}
+
+void subscription_callback(const void * msgin) {
+  const std_msgs__msg__String * msg = (const std_msgs__msg__String *)msgin;
+  
+  lcd.clear();
+  lcd.print("Received:");
+  lcd.setCursor(0, 1);
+  lcd.print(msg->data.data);
+}
+
+void setup() {
+  // Initialize LCD
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.print("Initializing...");
+  
+  // Set up Micro-ROS
+  set_microros_transports();
+  
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "micro_ros_esp32_lcd_node", "", &support));
+
+  // Create publisher
+  RCCHECK(rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_output"));
+
+  // Create subscriber
+  RCCHECK(rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_input"));
+
+  // Create timer
+  RCCHECK(rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(1000),
+    timer_callback));
+
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 3, &allocator));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer));
+  RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &received_msg, &subscription_callback, ON_NEW_DATA));
+
+  lcd.clear();
+  lcd.print("Micro-ROS Ready");
+}
+
+void loop() {
+  delay(100);
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+}
+```
+
+## Step 4: Wiring the I2C LCD to ESP32
+
+Connect the LCD to ESP32 as follows:
+
+```
+LCD     ESP32
+----------------
+GND    GND
+VCC    5V or 3.3V (check your LCD specs)
+SDA    GPIO21 (default I2C SDA)
+SCL    GPIO22 (default I2C SCL)
+```
+
+## Step 5: Testing
+
+1. Flash the program to your ESP32
+2. Start the Micro-ROS agent on your host machine:
+   ```bash
+   ros2 run micro_ros_agent micro_ros_agent serial --dev [PORT] -v6
+   ```
+3. You can now:
+   - View messages published by the ESP32 on `/lcd_output`
+   - Send messages to be displayed by publishing to `/lcd_input`
+
+## Troubleshooting
+
+1. **LCD not displaying anything**:
+   - Check the I2C address (try 0x3F if 0x27 doesn't work)
+   - Verify wiring connections
+   - Adjust contrast potentiometer if your LCD has one
+
+2. **Micro-ROS connection issues**:
+   - Ensure correct serial port is specified
+   - Check baud rate matches in code and agent
+   - Verify proper power supply to ESP32
+
+3. **Library conflicts**:
+   - Some LCD librarie
+   
+   
+//ros2 topic echo /lcd_output
+//ros2 topic pub /lcd_input std_msgs/msg/String "data: toto"
+//ros2 topic pub /lcd_input std_msgs/String 'data: TOTO'
+//ros2 topic pub /lcd_input std_msgs/msg/String "{data: 'Hello ROS 2'}"
+
+//ros2 topic echo /segment7_state
+//ros2 topic pub /segment7_command std_msgs/msg/Int32 "data: 1"
+//ros2 topic pub /segment7_command std_msgs/msg/Int32 "data: 2"
+
+//////////////////////////////////
+# Using Micro-ROS with ESP32 and I2C LCD Display
+
+This guide covers how to integrate an I2C LCD display with an ESP32 running Micro-ROS.
+
+## Prerequisites
+
+- ESP32 development board
+- I2C LCD display (typically 16x2 or 20x4)
+- Micro-ROS setup for ESP32
+- Arduino IDE or PlatformIO environment
+
+## Hardware Connections
+
+Connect the I2C LCD to your ESP32:
+
+```
+ESP32     I2C LCD
+-----------------
+3.3V  ->  VCC
+GND   ->  GND
+GPIO21 -> SDA
+GPIO22 -> SCL
+```
+
+Note: Some displays may require 5V for the backlight.
+
+## Software Setup
+
+### 1. Install Required Libraries
+
+For Arduino IDE:
+- Install `LiquidCrystal_I2C` library
+- Install Micro-ROS Arduino library
+
+For PlatformIO:
+Add these to your `platformio.ini`:
+```ini
+lib_deps = 
+    frankemb/LiquidCrystal I2C@^1.1.4
+    micro-ROS/micro_ros_arduino@^0.0.1
+```
+
+### 2. Basic Micro-ROS with LCD Example
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <Wire.h>
+#include <stdio.h>
+#include <LiquidCrystal_I2C.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rcl/error_handling.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Change address if needed
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+std_msgs__msg__String msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+#define RCCHECK(fn) \
+  { \
+    rcl_ret_t temp_rc = fn; \
+    if ((temp_rc != RCL_RET_OK)) { error_loop(); } \
+  }
+#define RCSOFTCHECK(fn) \
+  { \
+    rcl_ret_t temp_rc = fn; \
+    if ((temp_rc != RCL_RET_OK)) {} \
+  }
+
+void error_loop() {
+  lcd.clear();
+  lcd.print("Micro-ROS Error");
+  while (1) {
+    delay(100);
+  }
+}
+
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msgin;
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Received:");
+  lcd.setCursor(0, 1);
+  lcd.print(msg->data.data);
+}
+
+void setup() {
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+  lcd.print("Initializing...");
+
+  // Set up Micro-ROS
+  set_microros_transports();
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "esp32_lcd_node", "", &support));
+
+  // Create subscriber
+  RCCHECK(rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_display"));
+
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA));
+
+  lcd.clear();
+  lcd.print("Ready");
+}
+
+void loop() {
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+  delay(100);
+}
+```
+
+## Usage
+
+1. Flash this code to your ESP32
+2. From a ROS 2 node, publish messages to the `lcd_display` topic:
+   ```bash
+   ros2 topic pub /lcd_display std_msgs/msg/String "{data: 'Hello ROS 2'}"
+   
+   ```
+3. The message should appear on your LCD display
+
+## Advanced Features
+
+### Displaying Sensor Data
+
+You can modify the example to display sensor readings by adding a publisher:
+
+```cpp
+// Add to setup():
+RCCHECK(rclc_publisher_init_default(
+  &publisher,
+  &node,
+  ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+  "sensor_data"));
+
+// Add to loop():
+static unsigned long last_publish = 0;
+if (millis() - last_publish > 1000) {
+  msg.data.data = "Temp: 25.5C";
+  RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+  last_publish = millis();
+}
+```
+
+### Custom Messages
+
+For more complex displays, create custom message types in your Micro-ROS workspace.
+
+## Troubleshooting
+
+1. **LCD not displaying**: Check I2C address with an I2C scanner sketch
+2. **Micro-ROS not connecting**: Verify serial connection and agent setup
+3. **Memory issues**: Optimize with static allocation in `micro_ros_arduino.h`
+
+Remember to adjust the I2C address (0x27 in the example) to match your specific LCD module. Common alternatives are 0x3F or 0x20.
+
+
+

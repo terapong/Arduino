@@ -1,0 +1,263 @@
+# Troubleshooting Micro-ROS ESP32 with std_msgs__string and LiquidCrystal_I2C Loop Reset
+
+It sounds like you're experiencing issues with your ESP32 running Micro-ROS where the program resets when using both `std_msgs__string` messages and the `LiquidCrystal_I2C` library. Let's troubleshoot this systematically.
+
+## Common Causes of Loop Resets
+
+1. **Memory Issues**:
+   - ESP32 has limited RAM (typically 320KB)
+   - Micro-ROS and LCD libraries both consume significant memory
+   - String operations can cause heap fragmentation
+
+2. **I2C Conflicts**:
+   - Both Micro-ROS (if using hardware serial) and LCD share I2C bus
+   - Potential address conflicts or bus contention
+
+3. **Watchdog Timer Triggers**:
+   - Long-running operations blocking the main loop
+
+## Troubleshooting Steps
+
+### 1. Check for Memory Issues
+
+```cpp
+void setup() {
+  Serial.begin(115200);
+  Serial.printf("Free heap at setup: %d bytes\n", ESP.getFreeHeap());
+}
+
+void loop() {
+  Serial.printf("Free heap in loop: %d bytes\n", ESP.getFreeHeap());
+  delay(1000);
+}
+```
+
+Monitor the heap size - if it's consistently below 20-30KB, you're likely running out of memory.
+
+### 2. Optimize Memory Usage
+
+- Replace `std_msgs__string` with `std_msgs__msg__UInt8Array` or fixed-size arrays
+- Pre-allocate message objects instead of creating them dynamically
+- Reduce Micro-ROS agent queue sizes
+
+### 3. Check I2C Configuration
+
+```cpp
+#include <Wire.h>
+
+void scanI2C() {
+  byte error, address;
+  int nDevices;
+  
+  Serial.println("Scanning I2C...");
+  nDevices = 0;
+  for(address = 1; address < 127; address++ ) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    
+    if (error == 0) {
+      Serial.print("Device found at 0x");
+      if (address<16) Serial.print("0");
+      Serial.println(address,HEX);
+      nDevices++;
+    }
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found");
+}
+```
+
+### 4. Implement Watchdog Handling
+
+```cpp
+void setup() {
+  // Configure watchdog timer
+  esp_task_wdt_init(10, true); // 10 seconds, panic on timeout
+}
+
+void loop() {
+  esp_task_wdt_reset(); // Reset watchdog timer
+  // Your code here
+}
+```
+
+### 5. Example Optimized Code Structure
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <std_msgs/msg/string.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// Pre-allocate messages
+rcl_publisher_t publisher;
+std_msgs__msg__String msg;
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Adjust address and dimensions
+
+void setup() {
+  // Initialize serial
+  Serial.begin(115200);
+  
+  // Initialize I2C
+  Wire.begin(SDA, SCL); // Specify pins if not default
+  
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+  
+  // Micro-ROS setup
+  set_microros_transports();
+  delay(2000);
+  
+  allocator = rcl_get_default_allocator();
+  rclc_support_init(&support, 0, NULL, &allocator);
+  rclc_node_init_default(&node, "micro_ros_esp32_node", "", &support);
+  
+  // Initialize publisher with limited queue size
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_output",
+    1); // Small queue size
+  
+  // Initialize message memory
+  msg.data.data = (char*) malloc(50); // Fixed size buffer
+  msg.data.capacity = 50;
+}
+
+void loop() {
+  // Reset watchdog
+  esp_task_wdt_reset();
+  
+  // Keep Micro-ROS spinning
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  
+  // Process messages and update LCD
+  static unsigned long last_update = 0;
+  if (millis() - last_update > 500) {
+    last_update = millis();
+    
+    // Example: Publish a message
+    snprintf(msg.data.data, msg.data.capacity, "Heap: %d", ESP.getFreeHeap());
+    msg.data.size = strlen(msg.data.data);
+    rcl_publish(&publisher, &msg, NULL);
+    
+    // Update LCD
+    lcd.clear();
+    lcd.setCursor(0,0);
+    lcd.print("Free:");
+    lcd.setCursor(0,1);
+    lcd.print(ESP.getFreeHeap());
+  }
+}
+```
+
+## Additional Recommendations
+
+1. **Use PlatformIO**: It provides better memory management and debugging tools
+2. **Enable Core Dumps**: Helps identify crash causes
+   ```cpp
+   #include <esp32-hal.h>
+   void setup() {
+     // Enable core dumps
+     esp_core_dump_init();
+   }
+   ```
+3. **Monitor Stack Usage**:
+   ```cpp
+   void printStackUsage() {
+     Serial.printf("Free stack: %d\n", uxTaskGetStackHighWaterMark(NULL));
+   }
+   ```
+4. **Consider Using FreeRTOS Tasks**: Separate Micro-ROS and LCD operations into different tasks
+
+If you're still experiencing issues after trying these steps, please provide:
+1. Your complete code
+2. Exact reset messages from serial monitor
+3. Hardware configuration (ESP32 model, connections)
+4. Micro-ROS agent configuration
+
+This will help in providing more targeted troubleshooting advice.
+
+///////////////////////////////
+#include <micro_ros_arduino.h>
+#include <std_msgs/msg/string.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include "esp_log.h"
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+#include <std_msgs/msg/bool.h>
+
+// Pre-allocate messages
+rcl_publisher_t publisher;
+std_msgs__msg__String msg;
+rcl_allocator_t allocator;
+rclc_support_t support;
+rclc_executor_t executor;
+rcl_node_t node;
+rcl_timer_t timer;
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Adjust address and dimensions
+
+void setup() {
+  // Initialize serial
+  Serial.begin(115200);
+
+  // Initialize I2C
+  Wire.begin(SDA, SCL);  // Specify pins if not default
+
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+
+  // Micro-ROS setup
+  set_microros_transports();
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+  rclc_support_init(&support, 0, NULL, &allocator);
+  rclc_node_init_default(&node, "micro_ros_esp32_node", "", &support);
+
+  // Initialize publisher with limited queue size
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_output");  // Small queue size
+
+  // Initialize message memory
+  msg.data.data = (char*)malloc(50);  // Fixed size buffer
+  msg.data.capacity = 50;
+}
+
+void loop() {
+  // Reset watchdog
+  esp_reset_reason();
+
+  // Keep Micro-ROS spinning
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+
+  // Process messages and update LCD
+  static unsigned long last_update = 0;
+  if (millis() - last_update > 500) {
+    last_update = millis();
+
+    // Example: Publish a message
+    snprintf(msg.data.data, msg.data.capacity, "Heap: %d", ESP.getFreeHeap());
+    msg.data.size = strlen(msg.data.data);
+    rcl_publish(&publisher, &msg, NULL);
+
+    // Update LCD
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Free:");
+    lcd.setCursor(0, 1);
+    lcd.print(ESP.getFreeHeap());
+  }
+}

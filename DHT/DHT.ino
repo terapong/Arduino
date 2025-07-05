@@ -1,0 +1,85 @@
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <rcl/error_handling.h>
+
+#include <sensor_msgs/msg/temperature.h>
+#include <sensor_msgs/msg/relative_humidity.h>
+#include <DHT.h>
+
+#define DHT_PIN 15
+#define DHT_TYPE DHT11  // or DHT11 if you're using that
+
+DHT dht(DHT_PIN, DHT_TYPE);
+
+rcl_publisher_t temperature_publisher;
+rcl_publisher_t humidity_publisher;
+sensor_msgs__msg__Temperature temperature_msg;
+sensor_msgs__msg__RelativeHumidity humidity_msg;
+
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+void setup() {
+  dht.begin();
+
+  // Initialize Micro-ROS
+  set_microros_transports();
+  delay(2000);
+  // Initialize DHT sensor
+  rcl_allocator_t allocator = rcl_get_default_allocator();
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+  // Create node
+  rclc_node_init_default(&node, "esp32_dht_node", "", &support);
+
+  // Create publishers
+  rclc_publisher_init_default(
+    &temperature_publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Temperature),
+    "esp32/temperature");
+
+  rclc_publisher_init_default(
+    &humidity_publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, RelativeHumidity),
+    "esp32/humidity");
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+}
+
+void loop() {
+  // Read sensor data
+  float temp = dht.readTemperature();
+  float hum = dht.readHumidity();
+
+  if (!isnan(temp) && !isnan(hum)) {
+    // Populate temperature message
+    temperature_msg.temperature = temp;
+    temperature_msg.variance = 0.0;
+
+    // Populate humidity message
+    //humidity_msg.humidity = hum;
+    humidity_msg.relative_humidity = hum;
+    humidity_msg.variance = 0.0;
+
+    // Publish messages
+    rcl_publish(&temperature_publisher, &temperature_msg, NULL);
+    rcl_publish(&humidity_publisher, &humidity_msg, NULL);
+  }
+
+  delay(2000);  // Wait 2 seconds between readings
+}
+
+//ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
+//ros2 topic list
+//Once everything is running:
+//ros2 topic echo /esp32/temperature
+//ros2 topic echo /esp32/humidity
+//ros2 run otto_robot led_control_gui
+

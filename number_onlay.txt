@@ -1,0 +1,18 @@
+import tkinter as tk
+
+def only_allow_numbers(event):
+    char = event.char.lower()
+    if (event.state & 4) >> 2:
+        # If ctrl is also pressed:
+        # Check and handle Ctrl+c, Ctrl+v, Ctrl+x
+        # For now I will just allow it
+        return None
+    if char.isprintable() and (not event.char.isdigit()):
+        return "break"
+
+root = tk.Tk()
+entry = tk.Entry(root)
+entry.pack()
+entry.bind("<Key>", only_allow_numbers)
+
+root.mainloop()

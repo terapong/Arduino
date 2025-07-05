@@ -1,0 +1,207 @@
+#include <micro_ros_arduino.h>
+
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+
+#include <std_msgs/msg/bool.h>
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+
+std_msgs__msg__Bool msg;
+
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define LED_PIN_1 13
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+  //RCLC_UNUSED(last_call_time);
+  //if (timer != NULL) {
+  //  msg.data = led_state;
+  //  rcl_publish(&publisher, &msg, NULL);
+  //}
+}
+
+void subscription_callback(const void* msgin) {
+  const std_msgs__msg__Bool * msg_toto = (const std_msgs__msg__Bool *)msgin;
+  if (msg_toto->data) {
+    digitalWrite(LED_PIN_1, HIGH);
+  } else {
+    digitalWrite(LED_PIN_1, LOW);
+  }
+  // Publish the LED state
+  msg.data = msg_toto->data;
+  rcl_publish(&publisher, &msg, NULL); //มันส่งมาแล้วนี่หว่า
+}
+
+void setup() {
+  pinMode(LED_PIN_1, OUTPUT);
+  
+  // Set up Micro-ROS
+  set_microros_transports();
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+
+  // Create node
+  rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support);
+
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "relay_state");
+
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "relay_command");
+
+  //rcl_ret_t rc = rclc_subscription_init_default(
+  //  &subscriber, 
+  //  &node,
+  //  ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+  //  "led_command");
+
+  // Create timer
+  rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(1000),
+    timer_callback);
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA);
+
+  // Add subscription to the executor
+  //  rc = rclc_executor_add_subscription(
+  //      &executor, &subscriber, &sub_msg, //แก้ตัวนี้ด้วย จาก msg -> sub_msg
+  //      &timer_callback_LED, ON_NEW_DATA);
+
+  rclc_executor_add_timer(&executor, &timer);
+
+  msg.data = false;
+}
+
+void loop() {
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+}#include <micro_ros_arduino.h>
+
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+
+#include <std_msgs/msg/bool.h>
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+
+std_msgs__msg__Bool msg;
+
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define LED_PIN_1 13
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+  //RCLC_UNUSED(last_call_time);
+  //if (timer != NULL) {
+  //  msg.data = led_state;
+  //  rcl_publish(&publisher, &msg, NULL);
+  //}
+}
+
+void subscription_callback(const void* msgin) {
+  const std_msgs__msg__Bool * msg_toto = (const std_msgs__msg__Bool *)msgin;
+  if (msg_toto->data) {
+    digitalWrite(LED_PIN_1, HIGH);
+  } else {
+    digitalWrite(LED_PIN_1, LOW);
+  }
+  // Publish the LED state
+  msg.data = msg_toto->data;
+  rcl_publish(&publisher, &msg, NULL); //มันส่งมาแล้วนี่หว่า
+}
+
+void setup() {
+  pinMode(LED_PIN_1, OUTPUT);
+  
+  // Set up Micro-ROS
+  set_microros_transports();
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+
+  // Create node
+  rclc_node_init_default(&node, "micro_ros_arduino_node", "", &support);
+
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "relay_state");
+
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "relay_command");
+
+  //rcl_ret_t rc = rclc_subscription_init_default(
+  //  &subscriber, 
+  //  &node,
+  //  ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+  //  "led_command");
+
+  // Create timer
+  rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(1000),
+    timer_callback);
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA);
+
+  // Add subscription to the executor
+  //  rc = rclc_executor_add_subscription(
+  //      &executor, &subscriber, &sub_msg, //แก้ตัวนี้ด้วย จาก msg -> sub_msg
+  //      &timer_callback_LED, ON_NEW_DATA);
+
+  rclc_executor_add_timer(&executor, &timer);
+
+  msg.data = false;
+}
+
+void loop() {
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+}
+
+
+//ros2 topic pub /relay_command std_msgs/Bool "data: true"
+//ros2 topic pub /relay_command std_msgs/Bool "data: false"

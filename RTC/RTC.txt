@@ -1,0 +1,40 @@
+// CONNECTIONS:
+// DS1302 CLK/SCLK --> 15
+// DS1302 DAT/IO --> 2
+// DS1302 RST/CE --> 4
+// DS1302 VCC --> 3.3v - 5v
+// DS1302 GND --> GND
+// ThreeWire myWire(2,15,4); //
+#include <RtcDS1302.h>
+ThreeWire myWire(2, 15, 4);
+RtcDS1302<ThreeWire> Rtc(myWire);
+
+void setup() {
+  Serial.begin(115200);
+  Rtc.Begin();
+  RtcDateTime now = Rtc.GetDateTime();
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  if(compiled < now) {
+    Serial.println("RTC time is okay");
+  } else {
+    Rtc.SetDateTime(compiled);
+    Serial.println("RTC time is not okay");
+  }
+}
+
+void loop() {
+  RtcDateTime now = Rtc.GetDateTime();
+  Serial.print(now.Day());
+  Serial.print("/");
+  Serial.print(now.Month());
+  Serial.print("/");
+  Serial.print(now.Year());
+  Serial.print(" ");
+  Serial.print(now.Hour());
+  Serial.print(":");
+  Serial.print(now.Minute());
+  Serial.print(":");
+  Serial.println(now.Second());
+  delay(1000);
+}
+

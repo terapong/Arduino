@@ -1,0 +1,75 @@
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/color_rgba.h>
+
+rcl_node_t node;
+rcl_subscription_t subscriber;
+rclc_executor_t executor;
+std_msgs__msg__ColorRGBA led_color;
+
+#define LED_RED 15
+#define LED_GREEN 2
+#define LED_BLUE 4
+
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__ColorRGBA *msg = (const std_msgs__msg__ColorRGBA *)msgin;
+
+  // Set LED colors (PWM for smooth transitions)
+  analogWrite(LED_RED, (int)(msg->r * 255));
+  analogWrite(LED_GREEN, (int)(msg->g * 255));
+  analogWrite(LED_BLUE, (int)(msg->b * 255));
+}
+
+void setup() {
+  // Initialize PWM pins
+  pinMode(LED_RED, OUTPUT);
+  pinMode(LED_GREEN, OUTPUT);
+  pinMode(LED_BLUE, OUTPUT);
+
+  // Set initial color (off)
+  analogWrite(LED_RED, 0);
+  analogWrite(LED_GREEN, 0);
+  analogWrite(LED_BLUE, 0);
+
+  // Micro-ROS setup
+  set_microros_transports();
+
+  delay(2000);
+
+  rcl_allocator_t allocator = rcl_get_default_allocator();
+  rclc_support_t support;
+
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+
+  // Create node
+  rclc_node_init_default(&node, "esp32_led_controller", "", &support);
+
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, ColorRGBA),
+    "led_color");
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 1, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &led_color, &subscription_callback, ON_NEW_DATA);
+}
+
+void loop() {
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  delay(100);
+}
+
+//ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyUSB0
+//# Set to red
+//ros2 topic pub --once /led_color std_msgs/msg/ColorRGBA "{r: 1.0, g: 0.0, b: 0.0, a: 1.0}"
+
+//# Set to green
+//ros2 topic pub --once /led_color std_msgs/msg/ColorRGBA "{r: 0.0, g: 1.0, b: 0.0, a: 1.0}"
+
+//# Set to blue
+//ros2 topic pub --once /led_color std_msgs/msg/ColorRGBA "{r: 0.0, g: 0.0, b: 1.0, a: 1.0}"

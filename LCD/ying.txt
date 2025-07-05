@@ -1,0 +1,154 @@
+# Micro-ROS on ESP32: Displaying std_msgs__msg__String on I2C LCD
+
+Here's a guide to displaying messages from a ROS 2 string topic on an I2C LCD display using Micro-ROS on an ESP32.
+
+## Hardware Requirements
+- ESP32 board
+- I2C LCD display (typically 16x2 or 20x4)
+- Appropriate wiring (SDA, SCL, VCC, GND)
+
+## Software Setup
+
+### 1. Install Required Libraries
+You'll need:
+- Micro-ROS Arduino library
+- LiquidCrystal_I2C library for the LCD
+
+### 2. Basic Code Structure
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// LCD setup (adjust address and size as needed)
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Address 0x27, 16 columns, 2 rows
+
+rcl_subscription_t subscriber;
+std_msgs__msg__String msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+void error_loop(){
+  while(1){
+    digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+    delay(100);
+  }
+}
+
+void subscription_callback(const void * msgin)
+{
+  const std_msgs__msg__String * msg = (const std_msgs__msg__String *)msgin;
+  
+  // Clear LCD and display the message
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Message:");
+  lcd.setCursor(0, 1);
+  
+  // Display first 16 characters (for 16x2 LCD)
+  String displayMsg = String(msg->data.data);
+  if(displayMsg.length() > 16) {
+    displayMsg = displayMsg.substring(0, 16);
+  }
+  lcd.print(displayMsg);
+}
+
+void setup() {
+  // Initialize built-in LED
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  
+  // Initialize LCD
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Initializing...");
+  
+  // Set micro-ROS transport
+  set_microros_transports();
+  
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "esp32_lcd_node", "", &support));
+
+  // Create subscriber
+  RCCHECK(rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_display_topic"));
+
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA));
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Ready");
+}
+
+void loop() {
+  delay(100);
+  RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+}
+```
+
+## ROS 2 Setup
+
+On your ROS 2 machine (after setting up Micro-ROS agent):
+
+1. Run the Micro-ROS agent:
+```bash
+ros2 run micro_ros_agent micro_ros_agent serial --dev [PORT] -v6
+```
+
+2. Publish a message to test:
+```bash
+ros2 topic pub /lcd_display_topic std_msgs/msg/String "{data: 'Hello ROS 2!'}"
+ros2 topic pub /lcd_display_topic std_msgs/msg/String "{data: 'Hello ROS 2'}"
+```
+
+## Customization Options
+
+1. **LCD Size**: Adjust the parameters in `LiquidCrystal_I2C lcd(0x27, 16, 2)` to match your display.
+
+2. **I2C Address**: Use an I2C scanner to find your LCD's correct address if 0x27 doesn't work.
+
+3. **Message Handling**: Modify the `subscription_callback` to handle longer messages with scrolling or multi-line display.
+
+4. **Topic Name**: Change `lcd_display_topic` to your preferred topic name.
+
+## Troubleshooting
+
+1. If the LCD doesn't display anything:
+   - Verify I2C connections
+   - Check the LCD I2C address
+   - Ensure backlight is working
+
+2. If Micro-ROS doesn't connect:
+   - Check serial port settings
+   - Verify the Micro-ROS agent is running
+   - Check ESP32 serial monitor for errors
+
+3. For message display issues:
+   - Monitor the topic with `ros2 topic echo /lcd_display_topic`
+   - Check ESP32 serial output for Micro-ROS errors

@@ -1,0 +1,233 @@
+# Micro-ROS with ESP32 for Servo Control using Python
+
+This guide will help you set up a Micro-ROS environment on an ESP32 to control a servo motor, with communication handled via Python on your host machine.
+
+## Prerequisites
+
+- ESP32 board (with WiFi capability)
+- Servo motor (e.g., SG90)
+- Python 3.6+ on your host machine
+- Micro-ROS setup for ESP32
+- Basic understanding of ROS 2
+
+## Hardware Setup
+
+1. Connect the servo to your ESP32:
+   - Servo VCC (red wire) → ESP32 5V or 3.3V (depending on servo specs)
+   - Servo GND (brown/black wire) → ESP32 GND
+   - Servo signal (yellow/orange wire) → ESP32 GPIO pin (e.g., GPIO2)
+
+## ESP32 Micro-ROS Setup
+
+### 1. Install Micro-ROS for ESP32
+
+Follow the official Micro-ROS ESP32 installation guide:
+https://micro.ros.org/docs/tutorials/core/first_application_rtos/freertos/
+
+### 2. Create a Micro-ROS Servo Control Node
+
+Here's a basic example for controlling a servo:
+
+```c
+#include <micro_ros_arduino.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
+
+#include <ESP32Servo.h>
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+std_msgs__msg__Int32 msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+
+Servo my_servo;
+const int servo_pin = 2;  // GPIO pin for servo
+
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+void error_loop(){
+  while(1){
+    delay(100);
+  }
+}
+
+void subscription_callback(const void * msgin)
+{
+  const std_msgs__msg__Int32 * angle_msg = (const std_msgs__msg__Int32 *)msgin;
+  int angle = angle_msg->data;
+  
+  // Limit angle to 0-180 degrees
+  angle = constrain(angle, 0, 180);
+  my_servo.write(angle);
+  
+  // Publish the actual angle set
+  msg.data = angle;
+  RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+}
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Allow allocation of all timers
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  
+  my_servo.setPeriodHertz(50);      // Standard 50hz servo
+  my_servo.attach(servo_pin, 500, 2400); // Attach servo to pin
+  
+  set_microros_transports();
+  
+  delay(2000);
+  
+  allocator = rcl_get_default_allocator();
+  
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "esp32_servo_node", "", &support));
+  
+  // Create subscriber
+  RCCHECK(rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "servo_angle"));
+  
+  // Create publisher
+  RCCHECK(rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "actual_servo_angle"));
+  
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA));
+  
+  // Set servo to initial position
+  my_servo.write(90);
+  msg.data = 90;
+  RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+}
+
+void loop() {
+  delay(100);
+  RCCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+}
+```
+
+## Python Setup (Host Machine)
+
+### 1. Install ROS 2 and Micro-ROS Agent
+
+Follow the official ROS 2 installation guide for your platform:
+https://docs.ros.org/en/foxy/Installation.html
+
+Install the Micro-ROS agent:
+```bash
+sudo apt install ros-foxy-micro-ros-agent
+```
+
+### 2. Python Script to Control Servo
+
+Create a Python script to send angle commands:
+
+```python
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int32
+
+class ServoController(Node):
+    def __init__(self):
+        super().__init__('servo_controller')
+        self.publisher = self.create_publisher(Int32, 'servo_angle', 10)
+        self.subscription = self.create_subscription(
+            Int32,
+            'actual_servo_angle',
+            self.actual_angle_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+        
+    def set_angle(self, angle):
+        msg = Int32()
+        msg.data = int(angle)
+        self.publisher.publish(msg)
+        self.get_logger().info(f'Setting servo angle to: {msg.data}°')
+        
+    def actual_angle_callback(self, msg):
+        self.get_logger().info(f'Actual servo angle: {msg.data}°')
+
+def main(args=None):
+    rclpy.init(args=args)
+    
+    servo_controller = ServoController()
+    
+    try:
+        while rclpy.ok():
+            try:
+                angle = int(input("Enter angle (0-180, q to quit): "))
+                if angle < 0 or angle > 180:
+                    print("Angle must be between 0 and 180")
+                    continue
+                servo_controller.set_angle(angle)
+            except ValueError:
+                print("Exiting...")
+                break
+                
+        rclpy.spin(servo_controller)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        servo_controller.destroy_node()
+        rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+```
+
+## Running the System
+
+1. Flash the ESP32 with the Micro-ROS servo code
+2. Start the Micro-ROS agent on your host machine:
+   ```bash
+   ros2 run micro_ros_agent micro_ros_agent serial --dev [DEVICE] -v6
+   ```
+   Or for WiFi:
+   ```bash
+   ros2 run micro_ros_agent micro_ros_agent udp4 --port 8888 -v6
+   ```
+
+3. Run your Python script:
+   ```bash
+   python3 servo_controller.py
+   ```
+
+## Advanced Options
+
+1. **Add service for precise control**:
+   - Create a service in Micro-ROS for more complex servo commands
+   - Implement acceleration control or smooth movements
+
+2. **Web interface**:
+   - Use ROS web tools to create a browser-based controller
+
+3. **Multiple servos**:
+   - Extend the code to control multiple servos with different topics
+
+4. **Feedback**:
+   - Add a potentiometer for actual position feedback
+
+Remember to adjust the PWM settings (`500, 2400` in the example) according to your specific servo's specifications.

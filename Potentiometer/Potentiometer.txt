@@ -1,0 +1,16 @@
+int potenPin = 15;
+int ledPin = 2;
+
+void setup() {
+  pinMode(potenPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+  Serial.begin(115200);
+}
+
+void loop() {
+  int value = analogRead(potenPin);
+  int x = value/16;
+  analogWrite(ledPin, x);
+  Serial.println(x);
+  delay(100);
+}

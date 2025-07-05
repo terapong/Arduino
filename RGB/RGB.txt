@@ -1,0 +1,18 @@
+int rPin = 15;
+int gPin = 2;
+int bPin = 4;
+void setup() {
+  pinMode(rPin, OUTPUT);
+  pinMode(gPin, OUTPUT);
+  pinMode(bPin, OUTPUT);
+
+  analogWrite(rPin, 0);
+  analogWrite(gPin, 157);
+  analogWrite(bPin, 255);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}
+

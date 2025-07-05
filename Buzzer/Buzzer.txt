@@ -1,0 +1,17 @@
+int tonePin = 15;
+// int tonePin = 23;
+
+void setup() {
+  pinMode(tonePin, OUTPUT);
+  // digitalWrite(tonePin, HIGH);
+  tone(tonePin, 100);
+  delay(1000);
+  noTone(tonePin);
+  // digitalWrite(tonePin, LOW);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+
+}
+

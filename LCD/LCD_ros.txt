@@ -1,0 +1,133 @@
+#include <micro_ros_arduino.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+#include <std_msgs/msg/bool.h>
+
+// LCD configuration
+#define I2C_ADDR 0x27  // Common I2C address for PCF8574
+#define LCD_COLS 16    // Number of columns
+#define LCD_ROWS 2     // Number of rows
+
+LiquidCrystal_I2C lcd(I2C_ADDR, LCD_COLS, LCD_ROWS);
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+//std_msgs__msg__String msg;
+std_msgs__msg__Bool msg;
+std_msgs__msg__String received_msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+#define LED_PIN 2
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+  //RCLC_UNUSED(last_call_time);
+  //if (timer != NULL) {
+  //  msg.data = led_state;
+  //  rcl_publish(&publisher, &msg, NULL);
+  //}
+}
+
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__Bool *msg_toto = (const std_msgs__msg__Bool *)msgin;
+  //const std_msgs__msg__String * msg_toto = (const std_msgs__msg__String *)msgin;
+
+  lcd.clear();
+  lcd.print("Received:");
+  lcd.setCursor(0, 1);
+  //lcd.print("TOTO ying");
+  //lcd.print(msg_toto->data);
+
+  if (msg_toto->data) {
+  //if (msg_toto->data.data) {
+    digitalWrite(LED_PIN, HIGH);
+    lcd.print("Open");
+  } else {
+    digitalWrite(LED_PIN, LOW);
+    lcd.print("Close");
+  }
+  // Publish the LED state
+  msg.data = msg_toto->data;
+  rcl_publish(&publisher, &msg, NULL);  //มันส่งมาแล้วนี่หว่า
+
+  
+}
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+
+  // Initialize LCD
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.print("Initializing...");
+
+  // Set up Micro-ROS
+  set_microros_transports();
+
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+
+  // Create node
+  rclc_node_init_default(&node, "toto_lcd", "", &support);
+
+  // Create publisher
+  rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "lcd_output");
+
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+    "lcd_input");
+
+  // Create timer
+  rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(1000),
+    timer_callback);
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 2, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &received_msg, &subscription_callback, ON_NEW_DATA);
+  //rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA);
+
+  rclc_executor_add_timer(&executor, &timer);
+
+  lcd.clear();
+  lcd.print("Micro-ROS Ready");
+  digitalWrite(LED_PIN, HIGH);
+  msg.data = false;
+}
+
+void loop() {
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+}
+
+//ros2 topic echo /lcd_output
+//ros2 topic pub /lcd_input std_msgs/msg/String "{data: 'Hello ROS 2'}"
+//ros2 topic pub /lcd_input std_msgs/msg/String 'data: TOTO'
+//ros2 topic pub /lcd_input std_msgs/String "data: 'Hello ROS 2'"
+//ros2 topic pub /lcd_input std_msgs/String 'data: TOTO'
+
+//os2 topic pub /lcd_input std_msgs/Bool "data: true"
+//ros2 topic pub /lcd_input std_msgs/Bool "data: false"
+

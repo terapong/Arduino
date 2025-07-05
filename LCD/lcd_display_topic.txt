@@ -1,0 +1,232 @@
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+#include <std_msgs/msg/bool.h>
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// LCD setup (adjust address and size as needed)
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // Address 0x27, 16 columns, 2 rows
+
+rcl_publisher_t publisher;
+rcl_subscription_t subscriber;
+std_msgs__msg__String msg;
+//std_msgs__msg__Bool msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+bool new_msg_received = false;
+char display_buffer[6000];  // Adjust size as needed
+
+#define LED_BUILTIN 2
+
+void timer_callback(rcl_timer_t *timer, int64_t last_call_time) {
+  //RCLC_UNUSED(last_call_time);
+  //if (timer != NULL) {
+  //  msg.data = led_state;
+  //  rcl_publish(&publisher, &msg, NULL);
+  //}
+}
+
+//มันยังไม่เข้า เลย สลัดๆๆๆๆๆ
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msgin;
+
+  // // Copy safely to buffer
+  // strncpy(display_buffer, msg->data.data, sizeof(display_buffer) - 1);
+  // display_buffer[sizeof(display_buffer) - 1] = '\0';  // Null-terminate
+  // new_msg_received = true;
+
+  // if (new_msg_received) {
+  //   lcd.clear();
+  //   lcd.setCursor(0, 0);
+  //   lcd.print(display_buffer);
+  //   new_msg_received = false;
+  // }
+
+  // Clear LCD and display the message
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Message:");
+  lcd.setCursor(0, 1);
+
+  // Display first 16 characters (for 16x2 LCD)
+  String displayMsg = String(msg->data.data);
+  if (displayMsg.length() > 16) {
+    displayMsg = displayMsg.substring(0, 16);
+  }
+  lcd.print(displayMsg);
+  
+  delay(1000);
+}
+
+// void subscription_callback(const void *msgin) {
+//   const std_msgs__msg__Bool *msg_toto = (const std_msgs__msg__Bool *)msgin;
+
+//   lcd.clear();
+//   lcd.print("Received:");
+//   lcd.setCursor(0, 1);
+
+//   if (msg_toto->data) {
+//   //if (msg_toto->data.data) {
+//     digitalWrite(LED_BUILTIN, HIGH);
+//     lcd.print("Open");
+//   } else {
+//     digitalWrite(LED_BUILTIN, LOW);
+//     lcd.print("Close");
+//   }
+//   // Publish the LED state
+//   msg.data = msg_toto->data;
+//   rcl_publish(&publisher, &msg, NULL);  //มันส่งมาแล้วนี่หว่า
+//   delay(1000);
+// }
+
+void setup() {
+  // Initialize built-in LED
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+
+  // Initialize LCD
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Initializing...");
+
+  // Set micro-ROS transport
+  set_microros_transports();
+
+  delay(2000);
+
+  allocator = rcl_get_default_allocator();
+
+  // Create init_options
+  rclc_support_init(&support, 0, NULL, &allocator);
+
+  // Create node
+  rclc_node_init_default(&node, "esp32_lcd_node", "", &support);
+
+  // Create subscriber
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "lcd_display_topic");
+
+  // Create timer
+  rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(1000),
+    timer_callback);
+
+  // Create executor
+  rclc_executor_init(&executor, &support.context, 1, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &msg, &subscription_callback, ON_NEW_DATA);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Ready");
+  //msg.data = false;
+}
+
+void loop() {
+  delay(1000);
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+  delay(1000);  // Avoid busy looping
+}
+
+//ros2 topic echo /lcd_display_topic
+//ros2 topic pub /lcd_display_topic std_msgs/msg/String "{data: 'Hello ROS 2'}"
+//ros2 topic pub /lcd_display_topic std_msgs/msg/String 'data: TOTO'
+//ros2 topic pub /lcd_input std_msgs/String "data: 'Hello ROS 2'"
+//ros2 topic pub /lcd_input std_msgs/String 'data: TOTO'
+
+//ros2 topic pub /lcd_display_topic std_msgs/Bool "data: true"
+//ros2 topic pub /lcd_display_topic std_msgs/Bool "data: false"
+
+////////////////////////////////////
+#include <micro_ros_arduino.h>
+#include <rcl/rcl.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/string.h>
+#include <std_msgs/msg/bool.h>
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+rcl_node_t node;
+rcl_subscription_t subscriber;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+
+std_msgs__msg__String incoming_msg;
+
+bool new_msg_received = false;
+char display_buffer[6000];  // Adjust size as needed
+
+void subscription_callback(const void *msgin) {
+  const std_msgs__msg__String *msg = (const std_msgs__msg__String *)msgin;
+	delay(1000);
+  // Copy safely to buffer
+  strncpy(display_buffer, msg->data.data, sizeof(display_buffer) - 1);
+  display_buffer[sizeof(display_buffer) - 1] = '\0';  // Null-terminate
+  new_msg_received = true;
+  delay(1000);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);         // Allow time to connect serial
+  Wire.begin(21, 22);  // Or your actual SDA, SCL
+  lcd.init();
+  lcd.backlight();
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("TOTO Test");
+
+  // Init Micro-ROS
+  set_microros_transports();
+
+  allocator = rcl_get_default_allocator();
+  rclc_support_init(&support, 0, NULL, &allocator);
+  rclc_node_init_default(&node, "esp32_node", "", &support);
+
+  rclc_subscription_init_default(
+    &subscriber,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String),
+    "string_topic");
+
+  rclc_executor_init(&executor, &support.context, 1, &allocator);
+  rclc_executor_add_subscription(&executor, &subscriber, &incoming_msg, &subscription_callback, ON_NEW_DATA);
+}
+
+void loop() {
+delay(1000);  // Avoid busy looping
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100));
+
+  if (new_msg_received) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print(display_buffer);
+    new_msg_received = false;
+  }
+
+  delay(1000);  // Avoid busy looping
+}
+
+//ros2 topic pub /string_topic std_msgs/msg/String "{data: 'Hello ROS 2'}"
+//ros2 topic pub /string_topic std_msgs/msg/String "{data: 'Ying'}"

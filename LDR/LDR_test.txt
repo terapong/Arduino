@@ -1,0 +1,253 @@
+# Micro-ROS on ESP32 with LDR Loop
+
+Here's a complete example of using Micro-ROS on an ESP32 to read an LDR (Light Dependent Resistor) in a loop and publish the values to a ROS 2 topic.
+
+## Hardware Setup
+- ESP32 board
+- LDR (Light Dependent Resistor)
+- 10kΩ resistor
+- Breadboard and jumper wires
+
+### Circuit Connection
+1. Connect one leg of the LDR to 3.3V
+2. Connect the other leg of the LDR to an analog pin (e.g., GPIO36) AND to one leg of the 10kΩ resistor
+3. Connect the other leg of the 10kΩ resistor to GND
+
+## Software Implementation
+
+### 1. Install Required Libraries
+Make sure you have:
+- Micro-ROS Arduino library
+- ROS 2 installed on your host machine
+
+### 2. Arduino Sketch
+
+```cpp
+#include <micro_ros_arduino.h>
+#include <stdio.h>
+#include <rcl/rcl.h>
+#include <rcl/error_handling.h>
+#include <rclc/rclc.h>
+#include <rclc/executor.h>
+#include <std_msgs/msg/int32.h>
+
+// Configuration
+#define LDR_PIN 36  // Analog pin connected to LDR
+#define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){error_loop();}}
+#define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){}}
+
+rcl_publisher_t publisher;
+std_msgs__msg__Int32 msg;
+rclc_executor_t executor;
+rclc_support_t support;
+rcl_allocator_t allocator;
+rcl_node_t node;
+rcl_timer_t timer;
+
+// Error handling loop
+void error_loop() {
+  while(1) {
+    delay(100);
+  }
+}
+
+// Timer callback - reads LDR and publishes value
+void timer_callback(rcl_timer_t * timer, int64_t last_call_time) {
+  (void) last_call_time;
+  if (timer != NULL) {
+    // Read LDR value (0-4095 on ESP32)
+    int ldr_value = analogRead(LDR_PIN);
+    
+    // Fill message
+    msg.data = ldr_value;
+    
+    // Publish message
+    RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+    
+    // Optional: print to serial for debugging
+    Serial.printf("LDR Value: %d\n", ldr_value);
+  }
+}
+
+void setup() {
+  // Initialize serial
+  Serial.begin(115200);
+  
+  // Configure LDR pin
+  pinMode(LDR_PIN, INPUT);
+  
+  // Set up micro-ROS
+  set_microros_transports();
+  delay(2000);  // Give time for the agent to connect
+  
+  allocator = rcl_get_default_allocator();
+  
+  // Create init_options
+  RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+  
+  // Create node
+  RCCHECK(rclc_node_init_default(&node, "esp32_ldr_node", "", &support));
+  
+  // Create publisher
+  RCCHECK(rclc_publisher_init_default(
+    &publisher,
+    &node,
+    ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+    "ldr_value"));
+  
+  // Create timer (publishes every 500ms)
+  const unsigned int timer_timeout = 500;
+  RCCHECK(rclc_timer_init_default(
+    &timer,
+    &support,
+    RCL_MS_TO_NS(timer_timeout),
+    timer_callback));
+  
+  // Create executor
+  RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+  RCCHECK(rclc_executor_add_timer(&executor, &timer));
+  
+  // Optional: send a startup message
+  msg.data = -1;
+  RCSOFTCHECK(rcl_publish(&publisher, &msg, NULL));
+}
+
+void loop() {
+  // Spin the executor to process incoming messages and timer callbacks
+  RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(100)));
+  delay(10);
+}
+```
+
+### 3. ROS 2 Setup on Host Machine
+
+1. First, make sure you have a Micro-ROS agent running:
+
+```bash
+# Start the micro-ROS agent (assuming serial transport)
+ros2 run micro_ros_agent micro_ros_agent serial --dev [YOUR_DEVICE] baudrate=115200
+```
+
+Replace `[YOUR_DEVICE]` with your ESP32's serial port (e.g., `/dev/ttyUSB0` on Linux or `COM3` on Windows).
+
+2. To view the published LDR values:
+
+```bash
+ros2 topic echo /ldr_value
+```
+
+## Customizing the Example
+
+1. **Message Type**: You might want to use a `Float32` message instead if you convert the raw ADC value to lux.
+2. **Publish Rate**: Adjust the `timer_timeout` value in the code to change how often readings are published.
+3. **Multiple Sensors**: You can add more timers and publishers for additional sensors.
+4. **WiFi Transport**: For wireless connection, you can configure Micro-ROS to use WiFi instead of serial.
+
+## Troubleshooting
+
+1. If you don't see any messages:
+   - Check the serial connection between ESP32 and host
+   - Verify the Micro-ROS agent is running
+   - Check the baud rate matches (115200 in this example)
+   
+2. If you get erratic readings:
+   - Add a small capacitor (e.g., 100nF) across the LDR
+   - Implement software filtering (averaging multiple readings)
+
+This example provides a complete loop from reading the LDR to publishing the values to ROS 2 via Micro-ROS.
+
+
+import rclpy
+from rclpy.node import Node
+from std_msgs.msg import Int32
+
+class LDRSubscriber(Node):
+    def __init__(self):
+        super().__init__('ldr_python_subscriber')
+        self.subscription = self.create_subscription(
+            Int32,
+            'ldr_data',
+            self.listener_callback,
+            10)
+        self.subscription  # prevent unused variable warning
+        
+    def listener_callback(self, msg):
+        light_value = msg.data
+        # Convert ADC value to percentage (adjust based on your LDR's range)
+        percentage = min(100, max(0, (light_value - 500) / (3000 - 500) * 100))
+        self.get_logger().info(f'Light level: {light_value} (ADC), {percentage:.1f}%')
+
+def main(args=None):
+    rclpy.init(args=args)
+    ldr_subscriber = LDRSubscriber()
+    rclpy.spin(ldr_subscriber)
+    ldr_subscriber.destroy_node()
+    rclpy.shutdown()
+
+if __name__ == '__main__':
+    main()
+    
+    
+    
+/////////////////////////////////////    
+# Changing Text in a Tkinter Label Within a Class
+
+Here's how to change the text of a Tkinter Label when working within a class structure:
+
+import tkinter as tk
+
+class MyApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Label Text Change Example")
+        
+        # Create a label widget
+        self.my_label = tk.Label(root, text="Initial Text")
+        self.my_label.pack(pady=20)
+        
+        # Create a button to change the label text
+        change_button = tk.Button(root, text="Change Text", command=self.change_text)
+        change_button.pack()
+
+    def change_text(self):
+        # Method to change the label text
+        self.my_label.config(text="New Text After Click")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MyApp(root)
+    root.mainloop()
+
+## Key Points:
+
+1. Store the Label widget as an instance variable (self.my_label) so you can access it in other methods
+2. Use the config() method or configure() method to change the label text
+3. You can also directly change the text using the dictionary-style access:
+   
+   self.my_label["text"] = "New Text"
+   
+
+## Alternative Approach with StringVar:
+
+import tkinter as tk
+
+class MyApp:
+    def __init__(self, root):
+        self.root = root
+        self.label_text = tk.StringVar(value="Initial Text")
+        
+        self.my_label = tk.Label(root, textvariable=self.label_text)
+        self.my_label.pack(pady=20)
+        
+        change_button = tk.Button(root, text="Change Text", command=self.change_text)
+        change_button.pack()
+
+    def change_text(self):
+        self.label_text.set("New Text Using StringVar")
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = MyApp(root)
+    root.mainloop()
+
+The StringVar approach is useful when you want multiple widgets to stay synchronized with the same text value.
